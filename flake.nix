@@ -9,35 +9,62 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+          config.android_sdk.accept_license = true;
+        };
+
+        # Accept the Android SDK license
+        androidComposition = pkgs.androidenv.composeAndroidPackages {
+          platformVersions = [ "34" ];
+          buildToolsVersions = [ "34.0.0" ];
+          includeNDK = true;
+          includeEmulator = true;
+          includeSystemImages = true;
+          systemImageTypes = [ "google_apis" ];
+          abiVersions = [ "arm64-v8a" ];
+          extraLicenses = [
+            "android-sdk-license"
+            "android-sdk-preview-license"
+            "android-googletv-license"
+            "android-sdk-arm-dbt-license"
+            "google-gdk-license"
+            "intel-android-extra-license"
+            "intel-android-sysimage-license"
+            "mips-android-sysimage-license"
+          ];
+        };
+
+        androidSdk = androidComposition.androidsdk;
+        androidNdk = "${androidSdk}/libexec/android-sdk/ndk-bundle";
       in {
         devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
-            nim
-            nimble
-            just
-            jdk17
-            gradle
+          packages = [
+            pkgs.nim
+            pkgs.nimble
+            pkgs.just
+            pkgs.jdk17
+            pkgs.gradle
+            pkgs.kotlin
+            androidSdk
           ];
 
-          # Android SDK and NDK are NOT provided by Nix here.
-          # Install them separately via Android Studio or sdkmanager.
-          # Set ANDROID_HOME / ANDROID_SDK_ROOT in your environment
-          # to point to the SDK installation.
+          ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
+          ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
+          ANDROID_NDK_HOME = androidNdk;
+          NDK_SYSROOT = "${androidNdk}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot";
 
           shellHook = ''
             echo "isonim-android dev shell"
-            echo "  nim:    $(nim --version | head -1)"
-            echo "  nimble: $(nimble --version)"
-            echo "  just:   $(just --version)"
-            echo "  java:   $(java --version 2>&1 | head -1)"
-            echo "  gradle: $(gradle --version | grep '^Gradle' || echo 'unknown')"
+            echo "  nim:      $(nim --version 2>&1 | head -1)"
+            echo "  java:     $(java --version 2>&1 | head -1)"
+            echo "  gradle:   $(gradle --version 2>/dev/null | grep '^Gradle' || echo 'unknown')"
+            echo "  kotlin:   $(kotlin -version 2>&1 | head -1)"
+            echo "  adb:      $(adb --version 2>&1 | head -1)"
+            echo "  NDK:      $ANDROID_NDK_HOME"
             echo ""
-            if [ -z "$ANDROID_HOME" ]; then
-              echo "WARNING: ANDROID_HOME is not set."
-              echo "  Install Android SDK/NDK via Android Studio or sdkmanager"
-              echo "  and export ANDROID_HOME to your SDK path."
-            fi
+            echo "  Devices:  $(adb devices 2>/dev/null | grep -c 'device$' || echo '0') connected"
           '';
         };
       }
