@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:label="IsoNim Android"
-        android:theme="@style/Theme.MaterialComponents.DayNight">
+        android:theme="@style/Theme.IsoNimAndroid">
         <activity
             android:name=".MainActivity"
             android:exported="true">

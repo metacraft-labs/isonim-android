@@ -4,7 +4,9 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.*
+import com.google.android.material.button.MaterialButton
 
 object NimBridge {
     private val viewRegistry = mutableMapOf<Long, View>()
@@ -17,7 +19,13 @@ object NimBridge {
             "FrameLayout" -> FrameLayout(context)
             "LinearLayout" -> LinearLayout(context)
             "TextView" -> TextView(context)
-            "Button", "MaterialButton" -> Button(context)
+            "Button" -> Button(context)
+            "MaterialButton" -> try {
+                MaterialButton(context)
+            } catch (_: Exception) {
+                // Fallback when Material theme is not available (e.g. Robolectric)
+                Button(context)
+            }
             "EditText" -> EditText(context)
             "ImageView" -> ImageView(context)
             else -> FrameLayout(context)
@@ -67,6 +75,16 @@ object NimBridge {
                 "placeholder" -> if (view is EditText) view.hint = value
                 "value" -> if (view is TextView) view.text = value
                 "contentDescription" -> view.contentDescription = value
+                "imeOptions" -> if (view is EditText) {
+                    view.imeOptions = when (value) {
+                        "actionDone" -> EditorInfo.IME_ACTION_DONE
+                        "actionSearch" -> EditorInfo.IME_ACTION_SEARCH
+                        "actionSend" -> EditorInfo.IME_ACTION_SEND
+                        "actionGo" -> EditorInfo.IME_ACTION_GO
+                        "actionNext" -> EditorInfo.IME_ACTION_NEXT
+                        else -> EditorInfo.IME_ACTION_UNSPECIFIED
+                    }
+                }
             }
         }
     }

@@ -38,6 +38,7 @@ proc mapStyleProp*(prop: string): string =
   of "display": "visibility"
   of "opacity": "alpha"
   of "border-radius": "cornerRadius"
+  of "ime-options": "imeOptions"
   of "padding": "padding"
   of "margin": "margin"
   of "width": "width"
@@ -133,6 +134,19 @@ proc parentNode*(r: AndroidRenderer; node: AndroidElement): AndroidElement =
       0
   else:
     0
+
+# --- Back button / navigation handling ---
+
+proc registerBackButton*(r: AndroidRenderer; handler: proc()) =
+  let callbackId = registerCallback(handler)
+  jniHandleBackButton(callbackId)
+
+proc fireBackButton*(r: AndroidRenderer) =
+  when defined(mockJni):
+    for call in callLog:
+      if call.kind == jckHandleBackButton:
+        fireCallback(call.callbackId)
+        return
 
 # --- Testing helpers ---
 

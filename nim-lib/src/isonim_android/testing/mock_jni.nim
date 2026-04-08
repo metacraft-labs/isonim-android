@@ -6,7 +6,8 @@ import std/tables
 type
   JniCallKind* = enum
     jckCreateView, jckSetText, jckAppendChild, jckRemoveChild,
-    jckInsertBefore, jckSetAttribute, jckSetStyle, jckSetEventListener
+    jckInsertBefore, jckSetAttribute, jckSetStyle, jckSetEventListener,
+    jckHandleBackButton
 
   JniCall* = object
     kind*: JniCallKind
@@ -91,3 +92,6 @@ proc jniSetStyle*(handle: ViewHandle; prop, value: string) =
 proc jniSetEventListener*(handle: ViewHandle; event: string; callbackId: int32) =
   callLog.add(JniCall(kind: jckSetEventListener, handle: handle,
                        event: event, callbackId: callbackId))
+
+proc jniHandleBackButton*(callbackId: int32) =
+  callLog.add(JniCall(kind: jckHandleBackButton, callbackId: callbackId))
