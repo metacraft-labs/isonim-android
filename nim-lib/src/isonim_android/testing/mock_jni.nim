@@ -8,7 +8,8 @@ type
     jckCreateView, jckSetText, jckAppendChild, jckRemoveChild,
     jckInsertBefore, jckSetAttribute, jckSetStyle, jckSetEventListener,
     jckHandleBackButton,
-    jckCreateScrollView, jckCreateRecyclerView, jckSetScrollPosition
+    jckCreateScrollView, jckCreateRecyclerView, jckSetScrollPosition,
+    jckShowAlert
 
   JniCall* = object
     kind*: JniCallKind
@@ -21,6 +22,9 @@ type
     value*: string       ## attribute/style/text value
     callbackId*: int32   ## for event listeners
     event*: string       ## event name
+    title*: string       ## for alerts
+    message*: string     ## for alerts
+    buttonCount*: int    ## for alerts
 
   ViewHandle* = int64
 
@@ -112,3 +116,6 @@ proc jniCreateRecyclerView*(): ViewHandle =
 
 proc jniSetScrollPosition*(handle: ViewHandle; position: int) =
   callLog.add(JniCall(kind: jckSetScrollPosition, handle: handle, value: $position))
+
+proc jniShowAlert*(title, message: string; buttonCount: int) =
+  callLog.add(JniCall(kind: jckShowAlert, title: title, message: message, buttonCount: buttonCount))
