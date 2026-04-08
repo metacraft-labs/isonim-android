@@ -37,37 +37,64 @@ test:
 
 # Gradle build
 gradle-build:
-    ./gradlew :app:assembleDebug
+    ./gradlew :app:assembleNativeDebug
 
 # Robolectric tests (Tier 2)
 test-robolectric:
-    ./gradlew :app:testDebugUnitTest
+    ./gradlew :app:testNativeDebugUnitTest
 
 # Instrumented tests (Tier 3)
 test-device:
-    ./gradlew :app:connectedDebugAndroidTest
+    ./gradlew :app:connectedNativeDebugAndroidTest
 
-# Deploy to device
+# Deploy to device (native flavor)
 deploy:
     #!/usr/bin/env bash
     set -euo pipefail
-    ./gradlew :app:assembleDebug
-    APK=$(find app/build -name "*.apk" -path "*/debug/*" | head -1)
+    ./gradlew :app:assembleNativeDebug
+    APK=$(find app/build -name "*native-debug.apk" | head -1)
     adb install -r "$APK"
-    adb shell am start -n com.metacraft.isonim.android/.MainActivity
+    adb shell am start -n com.metacraft.isonim.android.native/com.metacraft.isonim.android.MainActivity
 
-# Deploy app to connected Android phone (with native lib)
+# Deploy app to connected Android phone (with native lib, native flavor)
 deploy-phone:
     #!/usr/bin/env bash
     set -euo pipefail
     just build-native
-    ./gradlew :app:assembleDebug 2>&1 | tail -2
-    APK=$(find app/build -name "*.apk" -path "*/debug/*" | head -1)
+    ./gradlew :app:assembleNativeDebug 2>&1 | tail -2
+    APK=$(find app/build -name "*native-debug.apk" | head -1)
     echo "Installing $APK..."
     adb install -r "$APK"
     echo "Launching..."
-    adb shell am start -n com.metacraft.isonim.android/.MainActivity
+    adb shell am start -n com.metacraft.isonim.android.native/com.metacraft.isonim.android.MainActivity
     echo "Done — app should be running on phone"
+
+# Deploy native-themed app to phone
+deploy-native:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just build-native
+    ./gradlew :app:assembleNativeDebug 2>&1 | tail -2
+    APK=$(find app/build -name "*native-debug.apk" | head -1)
+    echo "Installing $APK..."
+    adb install -r "$APK"
+    adb shell am start -n com.metacraft.isonim.android.native/com.metacraft.isonim.android.MainActivity
+    echo "Native app launched"
+
+# Deploy branded (IsoNim theme) app to phone
+deploy-branded:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just build-native
+    ./gradlew :app:assembleBrandedDebug 2>&1 | tail -2
+    APK=$(find app/build -name "*branded-debug.apk" | head -1)
+    echo "Installing $APK..."
+    adb install -r "$APK"
+    adb shell am start -n com.metacraft.isonim.android.branded/com.metacraft.isonim.android.MainActivity
+    echo "Branded app launched"
+
+# Deploy both variants
+deploy-both: deploy-native deploy-branded
 
 # Clean
 clean:

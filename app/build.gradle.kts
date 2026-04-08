@@ -15,6 +15,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }
+    flavorDimensions += "theme"
+    productFlavors {
+        create("native") {
+            dimension = "theme"
+            applicationIdSuffix = ".native"
+            resValue("string", "app_name", "Tasks (Native)")
+        }
+        create("branded") {
+            dimension = "theme"
+            applicationIdSuffix = ".branded"
+            resValue("string", "app_name", "Tasks (IsoNim)")
+        }
+    }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
