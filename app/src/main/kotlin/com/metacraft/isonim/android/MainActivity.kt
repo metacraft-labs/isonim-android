@@ -328,10 +328,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshList() {
+        // Must copy each Task object — DiffUtil compares by reference,
+        // so mutating in-place then passing the same objects won't trigger rebind
         val filtered = when (currentFilter) {
-            TaskFilter.ALL -> tasks.toList()
-            TaskFilter.ACTIVE -> tasks.filter { !it.isCompleted }
-            TaskFilter.COMPLETED -> tasks.filter { it.isCompleted }
+            TaskFilter.ALL -> tasks.map { it.copy() }
+            TaskFilter.ACTIVE -> tasks.filter { !it.isCompleted }.map { it.copy() }
+            TaskFilter.COMPLETED -> tasks.filter { it.isCompleted }.map { it.copy() }
         }
         adapter.submitList(filtered)
         val empty = filtered.isEmpty()
