@@ -7,7 +7,8 @@ type
   JniCallKind* = enum
     jckCreateView, jckSetText, jckAppendChild, jckRemoveChild,
     jckInsertBefore, jckSetAttribute, jckSetStyle, jckSetEventListener,
-    jckHandleBackButton
+    jckHandleBackButton,
+    jckCreateScrollView, jckCreateRecyclerView, jckSetScrollPosition
 
   JniCall* = object
     kind*: JniCallKind
@@ -95,3 +96,19 @@ proc jniSetEventListener*(handle: ViewHandle; event: string; callbackId: int32) 
 
 proc jniHandleBackButton*(callbackId: int32) =
   callLog.add(JniCall(kind: jckHandleBackButton, callbackId: callbackId))
+
+proc jniCreateScrollView*(orientation: string): ViewHandle =
+  result = nextHandle
+  inc nextHandle
+  viewTree[result] = MockViewNode(handle: result, tag: "ScrollView")
+  viewTree[result].attributes["orientation"] = orientation
+  callLog.add(JniCall(kind: jckCreateScrollView, handle: result, tag: "ScrollView", value: orientation))
+
+proc jniCreateRecyclerView*(): ViewHandle =
+  result = nextHandle
+  inc nextHandle
+  viewTree[result] = MockViewNode(handle: result, tag: "RecyclerView")
+  callLog.add(JniCall(kind: jckCreateRecyclerView, handle: result, tag: "RecyclerView"))
+
+proc jniSetScrollPosition*(handle: ViewHandle; position: int) =
+  callLog.add(JniCall(kind: jckSetScrollPosition, handle: handle, value: $position))

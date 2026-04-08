@@ -23,6 +23,8 @@ const tagMap = {
   "ul": "LinearLayout", "ol": "LinearLayout",
   "li": "FrameLayout",
   "img": "ImageView",
+  "scroll-view": "ScrollView",
+  "virtual-list": "RecyclerView",
 }.toTable
 
 proc mapTag*(tag: string): string =
@@ -46,6 +48,7 @@ proc mapStyleProp*(prop: string): string =
   of "gap": "gap"
   of "align-items": "gravity"
   of "justify-content": "gravityAxis"
+  of "overflow": "scrollbars"
   else: prop
 
 # Style value mapping: CSS values → Android values
@@ -64,13 +67,23 @@ proc mapStyleValue*(prop, value: string): string =
     elif value.startsWith("#") and value.len == 7:
       "#FF" & value[1..^1]
     else: value
+  of "overflow":
+    if value == "scroll": "visible"
+    elif value == "hidden": "none"
+    else: value
   else: value
 
 # --- 13 RendererBackend procs ---
 
 proc createElement*(r: AndroidRenderer; tag: string): AndroidElement =
   let androidTag = mapTag(tag)
-  jniCreateView(androidTag)
+  case androidTag
+  of "ScrollView":
+    jniCreateScrollView("vertical")
+  of "RecyclerView":
+    jniCreateRecyclerView()
+  else:
+    jniCreateView(androidTag)
 
 proc createTextNode*(r: AndroidRenderer; text: string): AndroidElement =
   let handle = jniCreateView("TextView")
@@ -183,6 +196,9 @@ proc treeTextContent*(r: AndroidRenderer; node: AndroidElement): string =
         result.add(r.treeTextContent(child))
   else:
     discard
+
+proc setScrollPosition*(r: AndroidRenderer; node: AndroidElement; position: int) =
+  jniSetScrollPosition(node, position)
 
 proc fireEvent*(r: AndroidRenderer; node: AndroidElement; event: string) =
   when defined(mockJni):

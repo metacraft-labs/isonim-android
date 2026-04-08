@@ -1,4 +1,12 @@
 nimcache/
+# Compiled Nim test binaries (no extension)
+tests/test_stub
+tests/test_jni_bridge
+tests/test_renderer
+tests/test_scheduler
+tests/test_material
+tests/test_scrollview
+tests/test_cross_renderer
 *.apk
 *.aab
 .gradle/

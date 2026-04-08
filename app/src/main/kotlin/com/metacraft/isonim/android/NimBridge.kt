@@ -6,6 +6,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.*
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 
 object NimBridge {
@@ -28,6 +30,10 @@ object NimBridge {
             }
             "EditText" -> EditText(context)
             "ImageView" -> ImageView(context)
+            "ScrollView" -> ScrollView(context)
+            "RecyclerView" -> RecyclerView(context).apply {
+                layoutManager = LinearLayoutManager(context)
+            }
             else -> FrameLayout(context)
         }
         viewRegistry[handle] = view
@@ -126,5 +132,29 @@ object NimBridge {
         eventCallbacks.clear()
         viewRegistry.clear()
         nextHandle = 1
+    }
+
+    class NimRecyclerAdapter(
+        itemCount: Int = 0,
+        val createHolder: () -> View,
+        val bindHolder: (View, Int) -> Unit
+    ) : RecyclerView.Adapter<NimRecyclerAdapter.VH>() {
+        var createCount = 0
+        private var _itemCount: Int = itemCount
+
+        var items: Int
+            get() = _itemCount
+            set(value) { _itemCount = value }
+
+        inner class VH(val view: View) : RecyclerView.ViewHolder(view)
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            createCount++
+            return VH(createHolder())
+        }
+
+        override fun onBindViewHolder(holder: VH, position: Int) = bindHolder(holder.view, position)
+
+        override fun getItemCount(): Int = _itemCount
     }
 }
