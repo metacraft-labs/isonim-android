@@ -5,6 +5,7 @@
 import std/[tables, strutils]
 import isonim_android/jni_callbacks
 import isonim_android/callbacks
+import isonim/theming/theme
 
 type
   AndroidRenderer* = object
@@ -74,27 +75,43 @@ proc mapStyleProp*(prop: string): string =
   of "overflow": "scrollbars"
   else: prop
 
-# Style value mapping: CSS values → Android values
+# Resolve semantic theme tokens to concrete values before platform mapping.
+proc resolveThemeToken*(prop, value: string): string =
+  case prop
+  of "background-color", "color", "textColor":
+    let themed = themeColor(value)
+    if themed != "": themed else: value
+  of "padding", "margin", "gap":
+    let sp = themeSpacing(value)
+    if sp >= 0: $sp else: value
+  of "border-radius", "cornerRadius":
+    let r = themeRadius(value)
+    if r >= 0: $r else: value
+  else:
+    value
+
+# Style value mapping: CSS values -> Android values
 proc mapStyleValue*(prop, value: string): string =
+  let resolved = resolveThemeToken(prop, value)
   case prop
   of "display":
-    if value == "none": "GONE"
+    if resolved == "none": "GONE"
     else: "VISIBLE"
   of "flex-direction":
-    if value in ["row", "row-reverse"]: "HORIZONTAL"
+    if resolved in ["row", "row-reverse"]: "HORIZONTAL"
     else: "VERTICAL"
   of "background-color":
     # Convert #RGB/#RRGGBB to Android #AARRGGBB format
-    if value.startsWith("#") and value.len == 4:
-      "#FF" & value[1] & value[1] & value[2] & value[2] & value[3] & value[3]
-    elif value.startsWith("#") and value.len == 7:
-      "#FF" & value[1..^1]
-    else: value
+    if resolved.startsWith("#") and resolved.len == 4:
+      "#FF" & resolved[1] & resolved[1] & resolved[2] & resolved[2] & resolved[3] & resolved[3]
+    elif resolved.startsWith("#") and resolved.len == 7:
+      "#FF" & resolved[1..^1]
+    else: resolved
   of "overflow":
-    if value == "scroll": "visible"
-    elif value == "hidden": "none"
-    else: value
-  else: value
+    if resolved == "scroll": "visible"
+    elif resolved == "hidden": "none"
+    else: resolved
+  else: resolved
 
 # --- 13 RendererBackend procs ---
 
