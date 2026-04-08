@@ -96,6 +96,18 @@ deploy-branded:
 # Deploy both variants
 deploy-both: deploy-native deploy-branded
 
+# Render all branded scenario snapshots via Paparazzi (no emulator)
+test-snapshots:
+    ./gradlew :app:testNativeDebugUnitTest --tests "*ScenarioSnapshotTest*"
+
+# Record new golden snapshots
+snapshot-record:
+    ./gradlew :app:recordPaparazziNativeDebug --tests "*ScenarioSnapshotTest*"
+
+# Verify snapshots against golden files
+snapshot-verify:
+    ./gradlew :app:verifyPaparazziNativeDebug --tests "*ScenarioSnapshotTest*"
+
 # Clean
 clean:
     rm -rf nimcache/ app/src/main/jniLibs/arm64-v8a/libisonim.so
