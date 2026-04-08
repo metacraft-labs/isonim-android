@@ -6,6 +6,9 @@ tests/test_renderer
 tests/test_scheduler
 tests/test_material
 tests/test_scrollview
+tests/test_textcontrols
+tests/test_selectioncontrols
+tests/test_dialogs
 tests/test_cross_renderer
 *.apk
 *.aab

@@ -1,7 +1,9 @@
 package com.metacraft.isonim.android
 
+import android.app.AlertDialog
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -34,6 +36,11 @@ object NimBridge {
             "RecyclerView" -> RecyclerView(context).apply {
                 layoutManager = LinearLayoutManager(context)
             }
+            "SearchView" -> SearchView(context)
+            "Switch" -> Switch(context)
+            "SeekBar" -> SeekBar(context)
+            "Spinner" -> Spinner(context)
+            "DatePicker" -> DatePicker(context)
             else -> FrameLayout(context)
         }
         viewRegistry[handle] = view
@@ -91,6 +98,18 @@ object NimBridge {
                         else -> EditorInfo.IME_ACTION_UNSPECIFIED
                     }
                 }
+                "inputType" -> if (view is EditText) {
+                    view.inputType = when (value) {
+                        "password" -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                        "multiline" -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                        else -> InputType.TYPE_CLASS_TEXT
+                    }
+                }
+                "queryHint" -> if (view is SearchView) view.queryHint = value
+                "checked" -> if (view is Switch) view.isChecked = value == "true"
+                "min" -> if (view is SeekBar) view.min = value.toIntOrNull() ?: 0
+                "max" -> if (view is SeekBar) view.max = value.toIntOrNull() ?: 100
+                "progress" -> if (view is SeekBar) view.progress = value.toIntOrNull() ?: 0
             }
         }
     }
@@ -126,6 +145,21 @@ object NimBridge {
                 "longPress" -> view.setOnLongClickListener { true }
             }
         }
+    }
+
+    fun showAlert(
+        context: android.content.Context,
+        title: String,
+        message: String,
+        buttons: List<String>
+    ): AlertDialog {
+        val builder = AlertDialog.Builder(context)
+            .setTitle(title)
+            .setMessage(message)
+        if (buttons.isNotEmpty()) builder.setPositiveButton(buttons[0]) { d, _ -> d.dismiss() }
+        if (buttons.size > 1) builder.setNegativeButton(buttons[1]) { d, _ -> d.dismiss() }
+        if (buttons.size > 2) builder.setNeutralButton(buttons[2]) { d, _ -> d.dismiss() }
+        return builder.create()
     }
 
     fun reset() {

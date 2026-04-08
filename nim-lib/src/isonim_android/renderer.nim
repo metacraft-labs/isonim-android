@@ -25,6 +25,16 @@ const tagMap = {
   "img": "ImageView",
   "scroll-view": "ScrollView",
   "virtual-list": "RecyclerView",
+  "textarea": "EditText",
+  "search": "SearchView",
+  "switch": "Switch", "toggle": "Switch",
+  "slider": "SeekBar", "range": "SeekBar",
+  "select": "Spinner", "spinner": "Spinner",
+  "segmented": "ToggleGroup",
+  "date-picker": "DatePicker",
+  "stepper": "Stepper",
+  "modal": "Dialog",
+  "action-sheet": "Menu",
 }.toTable
 
 proc mapTag*(tag: string): string =
@@ -79,11 +89,16 @@ proc createElement*(r: AndroidRenderer; tag: string): AndroidElement =
   let androidTag = mapTag(tag)
   case androidTag
   of "ScrollView":
-    jniCreateScrollView("vertical")
+    result = jniCreateScrollView("vertical")
   of "RecyclerView":
-    jniCreateRecyclerView()
+    result = jniCreateRecyclerView()
   else:
-    jniCreateView(androidTag)
+    result = jniCreateView(androidTag)
+    # Tag-specific defaults
+    if tag == "textarea":
+      jniSetAttribute(result, "inputType", "multiline")
+    elif tag == "modal":
+      jniSetAttribute(result, "dialogState", "hidden")
 
 proc createTextNode*(r: AndroidRenderer; text: string): AndroidElement =
   let handle = jniCreateView("TextView")
@@ -100,7 +115,18 @@ proc removeChild*(r: AndroidRenderer; parent, child: AndroidElement) =
   jniRemoveChild(parent, child)
 
 proc setAttribute*(r: AndroidRenderer; node: AndroidElement; name, value: string) =
-  jniSetAttribute(node, name, value)
+  if name == "type" and value == "password":
+    jniSetAttribute(node, "inputType", "password")
+  elif name == "placeholder":
+    when defined(mockJni):
+      if node in viewTree and viewTree[node].tag == "SearchView":
+        jniSetAttribute(node, "queryHint", value)
+      else:
+        jniSetAttribute(node, name, value)
+    else:
+      jniSetAttribute(node, name, value)
+  else:
+    jniSetAttribute(node, name, value)
 
 proc removeAttribute*(r: AndroidRenderer; node: AndroidElement; name: string) =
   jniSetAttribute(node, name, "")
@@ -206,6 +232,13 @@ proc fireEvent*(r: AndroidRenderer; node: AndroidElement; event: string) =
       if call.kind == jckSetEventListener and call.handle == node and call.event == event:
         fireCallback(call.callbackId)
         return
+
+proc showAlert*(r: AndroidRenderer; title, message: string; buttonCount: int) =
+  jniShowAlert(title, message, buttonCount)
+
+proc setDialogState*(r: AndroidRenderer; node: AndroidElement; state: string) =
+  ## Manages modal dialog state: "hidden", "presenting", "dismissing"
+  jniSetAttribute(node, "dialogState", state)
 
 proc resetRenderer*() =
   when defined(mockJni):
