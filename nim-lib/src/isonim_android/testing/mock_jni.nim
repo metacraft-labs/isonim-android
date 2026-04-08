@@ -9,7 +9,7 @@ type
     jckInsertBefore, jckSetAttribute, jckSetStyle, jckSetEventListener,
     jckHandleBackButton,
     jckCreateScrollView, jckCreateRecyclerView, jckSetScrollPosition,
-    jckShowAlert
+    jckShowAlert, jckShowToast
 
   JniCall* = object
     kind*: JniCallKind
@@ -119,3 +119,6 @@ proc jniSetScrollPosition*(handle: ViewHandle; position: int) =
 
 proc jniShowAlert*(title, message: string; buttonCount: int) =
   callLog.add(JniCall(kind: jckShowAlert, title: title, message: message, buttonCount: buttonCount))
+
+proc jniShowToast*(message: string; duration: string) =
+  callLog.add(JniCall(kind: jckShowToast, value: message, name: duration))
