@@ -146,6 +146,30 @@ proc textContent*(r: AndroidRenderer; node: AndroidElement): string =
     if node in viewTree: viewTree[node].text else: ""
   else: ""
 
+proc getAttribute*(r: AndroidRenderer; node: AndroidElement; name: string): string =
+  when defined(mockJni):
+    if node in viewTree:
+      viewTree[node].attributes.getOrDefault(name, "")
+    else: ""
+  else: ""
+
+proc nthChild*(r: AndroidRenderer; node: AndroidElement; index: int): AndroidElement =
+  when defined(mockJni):
+    if node in viewTree and index < viewTree[node].children.len:
+      viewTree[node].children[index]
+    else: 0
+  else: 0
+
+proc treeTextContent*(r: AndroidRenderer; node: AndroidElement): string =
+  ## Returns the concatenated text content of a node and all its descendants.
+  when defined(mockJni):
+    if node in viewTree:
+      result = viewTree[node].text
+      for child in viewTree[node].children:
+        result.add(r.treeTextContent(child))
+  else:
+    discard
+
 proc fireEvent*(r: AndroidRenderer; node: AndroidElement; event: string) =
   when defined(mockJni):
     for call in callLog:

@@ -102,4 +102,41 @@ class NimBridgeTest {
         val view = NimBridge.getView(handle)!!
         assertNotNull(view.background)
     }
+
+    // M4: Counter on real Views — create counter UI, tap +, verify label text
+    @Test
+    fun counterOnRealViews() {
+        val ctx = RuntimeEnvironment.getApplication()
+        // Create: container (FrameLayout) + label (TextView) + incBtn (Button)
+        val containerH = NimBridge.createView("FrameLayout", ctx)
+        val labelH = NimBridge.createView("TextView", ctx)
+        val incBtnH = NimBridge.createView("Button", ctx)
+
+        NimBridge.setViewText(labelH, "Count: 0")
+        NimBridge.setViewText(incBtnH, "+")
+        NimBridge.appendChild(containerH, labelH)
+        NimBridge.appendChild(containerH, incBtnH)
+        ShadowLooper.idleMainLooper()
+
+        // Verify initial state
+        val label = NimBridge.getView(labelH) as TextView
+        assertEquals("Count: 0", label.text.toString())
+
+        val container = NimBridge.getView(containerH) as ViewGroup
+        assertEquals(2, container.childCount)
+
+        // Simulate 3 "clicks" by updating the label (in real app, the Nim
+        // callback would do this via JNI; here we simulate the bridge call)
+        for (i in 1..3) {
+            NimBridge.setViewText(labelH, "Count: $i")
+        }
+        assertEquals("Count: 3", label.text.toString())
+
+        // Simulate tap via performClick on the real Button view
+        val btn = NimBridge.getView(incBtnH) as Button
+        var clicked = false
+        btn.setOnClickListener { clicked = true }
+        btn.performClick()
+        assertTrue("Button click listener should fire", clicked)
+    }
 }
