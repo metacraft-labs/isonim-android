@@ -7,10 +7,13 @@ import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.webkit.WebView
 import android.widget.*
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.tabs.TabLayout
 
 object NimBridge {
     private val viewRegistry = mutableMapOf<Long, View>()
@@ -41,6 +44,31 @@ object NimBridge {
             "SeekBar" -> SeekBar(context)
             "Spinner" -> Spinner(context)
             "DatePicker" -> DatePicker(context)
+            // M10: Navigation
+            "TabLayout" -> try {
+                TabLayout(context)
+            } catch (_: Exception) {
+                FrameLayout(context)
+            }
+            "BottomNavigationView" -> try {
+                com.google.android.material.bottomnavigation.BottomNavigationView(context)
+            } catch (_: Exception) {
+                FrameLayout(context)
+            }
+            "DrawerLayout" -> DrawerLayout(context)
+            "Toolbar" -> Toolbar(context)
+            // M11: Progress & Badges
+            "ProgressBar" -> ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+            }
+            "CircularProgress" -> ProgressBar(context).apply {
+                isIndeterminate = true
+            }
+            "Badge" -> TextView(context)
+            // M12: Web, Media & Maps
+            "WebView" -> WebView(context)
+            "VideoView" -> VideoView(context)
+            "MapView" -> FrameLayout(context) // MapView requires Google Play Services SDK
             else -> FrameLayout(context)
         }
         viewRegistry[handle] = view
@@ -108,8 +136,29 @@ object NimBridge {
                 "queryHint" -> if (view is SearchView) view.queryHint = value
                 "checked" -> if (view is Switch) view.isChecked = value == "true"
                 "min" -> if (view is SeekBar) view.min = value.toIntOrNull() ?: 0
-                "max" -> if (view is SeekBar) view.max = value.toIntOrNull() ?: 100
-                "progress" -> if (view is SeekBar) view.progress = value.toIntOrNull() ?: 0
+                "max" -> {
+                    if (view is SeekBar) view.max = value.toIntOrNull() ?: 100
+                    else if (view is ProgressBar) view.max = value.toIntOrNull() ?: 100
+                }
+                "progress" -> {
+                    if (view is SeekBar) view.progress = value.toIntOrNull() ?: 0
+                    else if (view is ProgressBar) view.progress = value.toIntOrNull() ?: 0
+                }
+                // M10: Navigation
+                "title" -> if (view is Toolbar) view.title = value
+                // M11: Badge
+                "badgeCount" -> if (view is TextView) view.text = value
+                // M12: WebView
+                "url" -> if (view is WebView) view.loadUrl(value)
+                "jsEnabled" -> if (view is WebView) view.settings.javaScriptEnabled = value == "true"
+                // M13: Accessibility
+                "importantForAccessibility" -> view.importantForAccessibility = when (value) {
+                    "NO" -> View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    "YES" -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    "AUTO" -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    else -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                }
+                "nextFocusForwardId" -> view.nextFocusForwardId = value.toIntOrNull() ?: View.NO_ID
             }
         }
     }

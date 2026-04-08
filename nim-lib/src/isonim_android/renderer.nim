@@ -29,12 +29,25 @@ const tagMap = {
   "search": "SearchView",
   "switch": "Switch", "toggle": "Switch",
   "slider": "SeekBar", "range": "SeekBar",
-  "select": "Spinner", "spinner": "Spinner",
+  "select": "Spinner",
   "segmented": "ToggleGroup",
   "date-picker": "DatePicker",
   "stepper": "Stepper",
   "modal": "Dialog",
   "action-sheet": "Menu",
+  # M10: Navigation
+  "tab-layout": "TabLayout",
+  "bottom-nav": "BottomNavigationView",
+  "drawer": "DrawerLayout",
+  "toolbar": "Toolbar",
+  # M11: Progress & Badges
+  "progress": "ProgressBar",
+  "spinner": "CircularProgress",
+  "badge": "Badge",
+  # M12: Web, Media & Maps
+  "web-view": "WebView",
+  "video": "VideoView",
+  "map-view": "MapView",
 }.toTable
 
 proc mapTag*(tag: string): string =
@@ -239,6 +252,140 @@ proc showAlert*(r: AndroidRenderer; title, message: string; buttonCount: int) =
 proc setDialogState*(r: AndroidRenderer; node: AndroidElement; state: string) =
   ## Manages modal dialog state: "hidden", "presenting", "dismissing"
   jniSetAttribute(node, "dialogState", state)
+
+# --- M10: NavStack (pure Nim navigation state) ---
+
+type
+  NavStack* = object
+    stack: seq[string]
+
+proc initNavStack*(): NavStack =
+  NavStack(stack: @[])
+
+proc push*(ns: var NavStack; route: string) =
+  ns.stack.add(route)
+
+proc pop*(ns: var NavStack): string =
+  if ns.stack.len > 0:
+    result = ns.stack.pop()
+  else:
+    result = ""
+
+proc popToRoot*(ns: var NavStack) =
+  if ns.stack.len > 1:
+    ns.stack.setLen(1)
+
+proc depth*(ns: NavStack): int =
+  ns.stack.len
+
+proc current*(ns: NavStack): string =
+  if ns.stack.len > 0: ns.stack[^1] else: ""
+
+# --- M10: Drawer state ---
+
+type
+  DrawerEdge* = enum
+    deLeft, deRight
+
+  DrawerState* = object
+    isOpen*: bool
+    edge*: DrawerEdge
+
+proc initDrawerState*(edge: DrawerEdge = deLeft): DrawerState =
+  DrawerState(isOpen: false, edge: edge)
+
+proc openDrawer*(ds: var DrawerState) =
+  ds.isOpen = true
+
+proc closeDrawer*(ds: var DrawerState) =
+  ds.isOpen = false
+
+proc toggleDrawer*(ds: var DrawerState) =
+  ds.isOpen = not ds.isOpen
+
+# --- M11: Progress helpers ---
+
+proc setProgress*(r: AndroidRenderer; node: AndroidElement; value: int) =
+  ## Set progress value, clamped to 0-100
+  let clamped = max(0, min(100, value))
+  jniSetAttribute(node, "progress", $clamped)
+
+proc setBadgeCount*(r: AndroidRenderer; node: AndroidElement; count: int) =
+  ## Set badge count; hides badge when count is 0
+  jniSetAttribute(node, "badgeCount", $count)
+  if count == 0:
+    jniSetAttribute(node, "visibility", "GONE")
+  else:
+    jniSetAttribute(node, "visibility", "VISIBLE")
+
+# --- M11: Toast ---
+
+proc showToast*(r: AndroidRenderer; message: string; duration: string = "short") =
+  jniShowToast(message, duration)
+
+# --- M12: WebView helpers ---
+
+proc loadUrl*(r: AndroidRenderer; node: AndroidElement; url: string) =
+  jniSetAttribute(node, "url", url)
+
+proc setJsEnabled*(r: AndroidRenderer; node: AndroidElement; enabled: bool) =
+  jniSetAttribute(node, "jsEnabled", $enabled)
+
+# --- M13: Accessibility ---
+
+# Auto-role mapping: tag → accessibility className
+const accessibilityRoleMap = {
+  "button": "android.widget.Button",
+  "input": "android.widget.EditText",
+  "img": "android.widget.ImageView",
+  "switch": "android.widget.Switch",
+  "toggle": "android.widget.Switch",
+  "slider": "android.widget.SeekBar",
+  "range": "android.widget.SeekBar",
+  "select": "android.widget.Spinner",
+  "progress": "android.widget.ProgressBar",
+  "div": "android.view.View",
+  "span": "android.widget.TextView",
+  "p": "android.widget.TextView",
+  "label": "android.widget.TextView",
+  "h1": "android.widget.TextView",
+  "h2": "android.widget.TextView",
+  "h3": "android.widget.TextView",
+  "h4": "android.widget.TextView",
+  "h5": "android.widget.TextView",
+  "h6": "android.widget.TextView",
+  "scroll-view": "android.widget.ScrollView",
+  "web-view": "android.webkit.WebView",
+  "video": "android.widget.VideoView",
+  "search": "android.widget.SearchView",
+  "textarea": "android.widget.EditText",
+  "tab-layout": "com.google.android.material.tabs.TabLayout",
+  "toolbar": "androidx.appcompat.widget.Toolbar",
+  "modal": "android.app.Dialog",
+}.toTable
+
+proc accessibilityRole*(tag: string): string =
+  ## Returns the accessibility className for a given tag.
+  accessibilityRoleMap.getOrDefault(tag, "android.view.View")
+
+proc setAccessibility*(r: AndroidRenderer; node: AndroidElement; tag: string) =
+  ## Auto-sets accessibility className based on tag.
+  jniSetAttribute(node, "accessibilityClassName", accessibilityRole(tag))
+
+proc setAriaLabel*(r: AndroidRenderer; node: AndroidElement; label: string) =
+  jniSetAttribute(node, "contentDescription", label)
+
+proc setAriaHidden*(r: AndroidRenderer; node: AndroidElement; hidden: bool) =
+  if hidden:
+    jniSetAttribute(node, "importantForAccessibility", "NO")
+  else:
+    jniSetAttribute(node, "importantForAccessibility", "YES")
+
+proc setAriaRole*(r: AndroidRenderer; node: AndroidElement; role: string) =
+  jniSetAttribute(node, "accessibilityClassName", role)
+
+proc setTabIndex*(r: AndroidRenderer; node: AndroidElement; targetHandle: string) =
+  jniSetAttribute(node, "nextFocusForwardId", targetHandle)
 
 proc resetRenderer*() =
   when defined(mockJni):
