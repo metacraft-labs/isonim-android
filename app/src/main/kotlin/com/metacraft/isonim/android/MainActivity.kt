@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageButton
@@ -33,11 +34,15 @@ class MainActivity : AppCompatActivity() {
     private var nextId = 1L
     private val tasks = mutableListOf<Task>()
     private var currentFilter = TaskFilter.ALL
-    private lateinit var adapter: TaskAdapter
     private lateinit var emptyLabel: TextView
     private lateinit var clearButton: View
-    private lateinit var recyclerView: RecyclerView
     private var filterPillButtons: List<TextView> = emptyList()
+    // Branded: ScrollView + LinearLayout (not RecyclerView)
+    private var taskStack: LinearLayout? = null
+    private var brandedScrollView: android.widget.ScrollView? = null
+    // Native: RecyclerView
+    private var adapter: TaskAdapter? = null
+    private var recyclerView: RecyclerView? = null
 
     // isoTheme design tokens (identical to iOS)
     companion object {
@@ -60,8 +65,15 @@ class MainActivity : AppCompatActivity() {
         const val BODY_FONT_SIZE = 16f
         const val CAPTION_FONT_SIZE = 14f
         const val ICON_FONT_SIZE = 24f
-        const val CHECKBOX_SIZE = 28
+        const val CHECKBOX_SIZE = 24
         const val ADD_BUTTON_SIZE = 48
+        // Row dimensions (must match iOS exactly)
+        const val ROW_HEIGHT = 56
+        const val ROW_PADDING_H = 16
+        const val ROW_PADDING_V = 12
+        const val ROW_GAP = 8
+        const val ROW_RADIUS = 12f
+        const val DELETE_ICON_SIZE = 20f
     }
 
     private val isBranded: Boolean
@@ -160,21 +172,44 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(inputRow)
 
-        // --- RecyclerView ---
-        adapter = TaskAdapter(
-            onToggle = { task -> toggleTask(task) },
-            onDelete = { task -> deleteTask(task) },
-            isBranded = isBranded
-        )
-
-        recyclerView = RecyclerView(this).apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = this@MainActivity.adapter
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        // --- Task List ---
+        if (isBranded) {
+            // Branded: ScrollView + LinearLayout (not RecyclerView)
+            val scrollView = android.widget.ScrollView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                )
+            }
+            val stack = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(dp(ROW_PADDING_H), dp(ROW_GAP), dp(ROW_PADDING_H), dp(ROW_GAP))
+            }
+            scrollView.addView(stack)
+            taskStack = stack
+            brandedScrollView = scrollView
+            root.addView(scrollView)
+        } else {
+            // Native: RecyclerView
+            val nativeAdapter = TaskAdapter(
+                onToggle = { task -> toggleTask(task) },
+                onDelete = { task -> deleteTask(task) },
+                isBranded = false
             )
+            adapter = nativeAdapter
+            val rv = RecyclerView(this).apply {
+                layoutManager = LinearLayoutManager(this@MainActivity)
+                adapter = nativeAdapter
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                )
+            }
+            recyclerView = rv
+            root.addView(rv)
         }
-        root.addView(recyclerView)
 
         // --- Empty Label ---
         emptyLabel = TextView(this).apply {
@@ -328,26 +363,105 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshList() {
-        // Must copy each Task object — DiffUtil compares by reference,
-        // so mutating in-place then passing the same objects won't trigger rebind
         val filtered = when (currentFilter) {
             TaskFilter.ALL -> tasks.map { it.copy() }
             TaskFilter.ACTIVE -> tasks.filter { !it.isCompleted }.map { it.copy() }
             TaskFilter.COMPLETED -> tasks.filter { it.isCompleted }.map { it.copy() }
         }
-        adapter.submitList(filtered)
-        val empty = filtered.isEmpty()
-        recyclerView.visibility = if (empty) android.view.View.GONE else android.view.View.VISIBLE
-        emptyLabel.visibility = if (empty) android.view.View.VISIBLE else android.view.View.GONE
+
+        if (isBranded) {
+            // Branded: rebuild stacked plain views
+            val stack = taskStack ?: return
+            stack.removeAllViews()
+            for (task in filtered) {
+                stack.addView(createBrandedRow(task))
+            }
+            val empty = filtered.isEmpty()
+            brandedScrollView?.visibility = if (empty) View.GONE else View.VISIBLE
+            emptyLabel.visibility = if (empty) View.VISIBLE else View.GONE
+        } else {
+            // Native: RecyclerView adapter
+            adapter?.submitList(filtered)
+            val empty = filtered.isEmpty()
+            recyclerView?.visibility = if (empty) View.GONE else View.VISIBLE
+            emptyLabel.visibility = if (empty) View.VISIBLE else View.GONE
+        }
+
         emptyLabel.text = when {
-            empty && currentFilter == TaskFilter.ALL -> "No tasks yet.\nTap + to add one."
-            empty && currentFilter == TaskFilter.ACTIVE -> "No active tasks.\nAll done!"
-            empty && currentFilter == TaskFilter.COMPLETED -> "No completed tasks yet."
+            filtered.isEmpty() && currentFilter == TaskFilter.ALL -> "No tasks yet.\nTap + to add one."
+            filtered.isEmpty() && currentFilter == TaskFilter.ACTIVE -> "No active tasks.\nAll done!"
+            filtered.isEmpty() && currentFilter == TaskFilter.COMPLETED -> "No completed tasks yet."
             else -> ""
         }
         val hasCompleted = tasks.any { it.isCompleted }
         clearButton.isEnabled = hasCompleted
         clearButton.alpha = if (hasCompleted) 1.0f else 0.4f
+    }
+
+    private fun createBrandedRow(task: Task): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ROW_PADDING_H), dp(ROW_PADDING_V), dp(ROW_PADDING_H), dp(ROW_PADDING_V))
+            val bg = GradientDrawable().apply {
+                setColor(COLOR_SURFACE)
+                cornerRadius = dp(ROW_RADIUS.toInt()).toFloat()
+            }
+            background = bg
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(ROW_HEIGHT)
+            ).apply {
+                bottomMargin = dp(ROW_GAP)
+            }
+        }
+
+        // Custom checkbox
+        val checkboxView = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = BODY_FONT_SIZE
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(dp(CHECKBOX_SIZE), dp(CHECKBOX_SIZE))
+            val checkBg = GradientDrawable().apply {
+                cornerRadius = dp(CHECKBOX_RADIUS.toInt()).toFloat()
+                if (task.isCompleted) {
+                    setColor(COLOR_PRIMARY)
+                } else {
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(2), COLOR_BORDER)
+                }
+            }
+            background = checkBg
+            text = if (task.isCompleted) "\u2713" else ""
+            setOnClickListener { toggleTask(task) }
+        }
+        row.addView(checkboxView)
+
+        // Title label
+        val titleView = TextView(this).apply {
+            text = task.title
+            textSize = BODY_FONT_SIZE
+            setTextColor(if (task.isCompleted) COLOR_TEXT_DISABLED else COLOR_TEXT_PRIMARY)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(INNER_PADDING)
+                marginEnd = dp(GAP)
+            }
+            maxLines = 1
+        }
+        row.addView(titleView)
+
+        // Delete button
+        val deleteBtn = TextView(this).apply {
+            text = "\u2715"
+            textSize = DELETE_ICON_SIZE
+            setTextColor(COLOR_ERROR)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(CHECKBOX_SIZE), dp(CHECKBOX_SIZE))
+            setOnClickListener { deleteTask(task) }
+        }
+        row.addView(deleteBtn)
+
+        return row
     }
 
     private fun dp(value: Int): Int =
