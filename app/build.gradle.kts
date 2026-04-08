@@ -21,13 +21,16 @@ android {
             dimension = "theme"
             applicationIdSuffix = ".native"
             resValue("string", "app_name", "Tasks (Native)")
+            buildConfigField("boolean", "IS_BRANDED", "false")
         }
         create("branded") {
             dimension = "theme"
             applicationIdSuffix = ".branded"
             resValue("string", "app_name", "Tasks (IsoNim)")
+            buildConfigField("boolean", "IS_BRANDED", "true")
         }
     }
+    buildFeatures { buildConfig = true }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
