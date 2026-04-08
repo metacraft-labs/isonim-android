@@ -56,6 +56,19 @@ deploy:
     adb install -r "$APK"
     adb shell am start -n com.metacraft.isonim.android/.MainActivity
 
+# Deploy app to connected Android phone (with native lib)
+deploy-phone:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just build-native
+    ./gradlew :app:assembleDebug 2>&1 | tail -2
+    APK=$(find app/build -name "*.apk" -path "*/debug/*" | head -1)
+    echo "Installing $APK..."
+    adb install -r "$APK"
+    echo "Launching..."
+    adb shell am start -n com.metacraft.isonim.android/.MainActivity
+    echo "Done — app should be running on phone"
+
 # Clean
 clean:
     rm -rf nimcache/ app/src/main/jniLibs/arm64-v8a/libisonim.so
