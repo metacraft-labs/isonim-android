@@ -10,7 +10,7 @@ verify-env:
     echo "Gradle:  $(gradle --version 2>/dev/null | grep '^Gradle')"
     echo "Devices: $(adb devices 2>/dev/null | grep -c 'device$') connected"
 
-# Build Nim .so for Android ARM64
+# Build Nim .so for Android ARM64 (Nim-driven branded UI via command buffer)
 build-native:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -25,9 +25,10 @@ build-native:
       --passL:"-shared -llog" \
       --app:lib \
       --noMain \
+      -d:commandBuffer \
       --nimcache:nimcache/android-arm64 \
       -o:app/src/main/jniLibs/arm64-v8a/libisonim.so \
-      nim-lib/src/isonim_android/jni_stub.nim
+      nim-lib/src/isonim_android/android_entry.nim
     echo "Built: app/src/main/jniLibs/arm64-v8a/libisonim.so"
     file app/src/main/jniLibs/arm64-v8a/libisonim.so
 

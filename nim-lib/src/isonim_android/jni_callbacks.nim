@@ -1,10 +1,14 @@
 ## JNI callbacks — compile-time switch between mock and real JNI.
 ##
 ## Use `-d:mockJni` for host-side testing (Tier 1).
-## Without the flag, compilation fails until real JNI is wired up.
+## Use `-d:commandBuffer` for real Android builds (Nim-driven UI).
+## Without either flag, compilation fails.
 
 when defined(mockJni):
   import isonim_android/testing/mock_jni
   export mock_jni
+elif defined(commandBuffer):
+  import isonim_android/command_buffer
+  export command_buffer
 else:
-  {.error: "Real JNI not yet implemented — compile with -d:mockJni for testing".}
+  {.error: "Compile with -d:mockJni (testing) or -d:commandBuffer (Android)".}

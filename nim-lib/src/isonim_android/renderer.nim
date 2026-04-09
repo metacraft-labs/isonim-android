@@ -407,6 +407,8 @@ proc setTabIndex*(r: AndroidRenderer; node: AndroidElement; targetHandle: string
 proc resetRenderer*() =
   when defined(mockJni):
     resetMockJni()
+  elif defined(commandBuffer):
+    resetCommandBuffer()
   resetCallbacks()
 
 # --- Compile-time concept check ---

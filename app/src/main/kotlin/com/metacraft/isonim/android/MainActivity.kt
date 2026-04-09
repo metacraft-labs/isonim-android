@@ -1,18 +1,13 @@
 package com.metacraft.isonim.android
 
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -20,7 +15,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
-import com.google.android.material.color.MaterialColors
 
 data class Task(
     val id: Long,
@@ -36,11 +30,7 @@ class MainActivity : AppCompatActivity() {
     private var currentFilter = TaskFilter.ALL
     private lateinit var emptyLabel: TextView
     private lateinit var clearButton: View
-    private var filterPillButtons: List<TextView> = emptyList()
-    // Branded: ScrollView + LinearLayout (not RecyclerView)
-    private var taskStack: LinearLayout? = null
-    private var brandedScrollView: android.widget.ScrollView? = null
-    // Native: RecyclerView
+    // Native flavor: RecyclerView
     private var adapter: TaskAdapter? = null
     private var recyclerView: RecyclerView? = null
 
@@ -83,27 +73,148 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         SchedulerState.resumed()
 
+        if (isBranded) {
+            createBrandedNimUI()
+        } else {
+            createNativeUI()
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Branded: Nim-driven UI via command buffer
+    // -----------------------------------------------------------------------
+
+    private var nimRootContainer: LinearLayout? = null
+    // EditText lives in Kotlin so the soft keyboard works; Nim drives everything else
+    private var nimInputField: EditText? = null
+
+    private fun createBrandedNimUI() {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(COLOR_BACKGROUND)
+        }
+        nimRootContainer = container
+
+        // --- Kotlin-owned input row (keyboard needs a real EditText) ---
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(OUTER_PADDING), dp(GAP), dp(OUTER_PADDING), dp(GAP))
+        }
+        val inputField = EditText(this).apply {
+            hint = "What needs to be done?"
+            setSingleLine()
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            textSize = BODY_FONT_SIZE
+            setTextColor(COLOR_TEXT_PRIMARY)
+            val bg = GradientDrawable().apply {
+                setColor(COLOR_SURFACE)
+                cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
+            }
+            background = bg
+            setPadding(dp(INNER_PADDING), dp(INNER_PADDING), dp(INNER_PADDING), dp(INNER_PADDING))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(GAP)
+            }
+        }
+        inputField.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                nimAddTask(inputField)
+                true
+            } else false
+        }
+        nimInputField = inputField
+        inputRow.addView(inputField)
+
+        val addBtn = TextView(this).apply {
+            text = "+"
+            textSize = ICON_FONT_SIZE
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                setColor(COLOR_PRIMARY)
+                cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
+            }
+            background = bg
+            layoutParams = LinearLayout.LayoutParams(dp(ADD_BUTTON_SIZE), dp(ADD_BUTTON_SIZE))
+            setOnClickListener { nimAddTask(inputField) }
+        }
+        inputRow.addView(addBtn)
+
+        container.addView(inputRow)
+
+        // --- Nim-rendered content area (rebuilt on every state change) ---
+        val nimContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        }
+        nimContent.id = View.generateViewId()
+        nimContentContainer = nimContent
+        container.addView(nimContent)
+
+        setContentView(container)
+
+        // Initial render from Nim
+        renderNimUI()
+    }
+
+    private var nimContentContainer: LinearLayout? = null
+
+    private fun nimAddTask(inputField: EditText) {
+        val text = inputField.text.toString().trim()
+        if (text.isEmpty()) return
+        NimBridge.nimSetInputText(text)
+        NimBridge.nimAddTaskFromInput()
+        inputField.text.clear()
+        renderNimUI()
+    }
+
+    private fun renderNimUI() {
+        val content = nimContentContainer ?: return
+        // Clear old Nim-rendered views
+        NimBridge.reset()
+        content.removeAllViews()
+
+        val dm = resources.displayMetrics
+        val width = (dm.widthPixels / dm.density).toInt()
+        val height = (dm.heightPixels / dm.density).toInt()
+        NimBridge.nimBuildBrandedUI(width, height)
+
+        val rootHandle = NimBridge.executeCommandBuffer(this) { callbackId ->
+            NimBridge.nimHandleEvent(callbackId)
+            // After any Nim callback, rebuild UI to reflect state changes
+            renderNimUI()
+        }
+
+        val rootView = NimBridge.getView(rootHandle)
+        if (rootView != null) {
+            // Remove from any existing parent before adding
+            (rootView.parent as? ViewGroup)?.removeView(rootView)
+            content.addView(rootView, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Native: pure-Kotlin Material Design UI (unchanged)
+    // -----------------------------------------------------------------------
+
+    private fun createNativeUI() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            if (isBranded) {
-                setBackgroundColor(COLOR_BACKGROUND)
-            } else {
-                setBackgroundColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorSurface, 0))
-            }
+            setBackgroundColor(com.google.android.material.color.MaterialColors.getColor(this, com.google.android.material.R.attr.colorSurface, 0))
         }
 
         // --- Title ---
         val titleBar = TextView(this).apply {
             text = "Tasks"
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            if (isBranded) {
-                textSize = TITLE_FONT_SIZE
-                setTextColor(COLOR_TEXT_PRIMARY)
-                setPadding(dp(OUTER_PADDING), dp(48), dp(OUTER_PADDING), dp(GAP))
-            } else {
-                textSize = 28f
-                setPadding(dp(16), dp(48), dp(16), dp(8))
-            }
+            textSize = 28f
+            setPadding(dp(16), dp(48), dp(16), dp(8))
         }
         root.addView(titleBar)
 
@@ -111,11 +222,7 @@ class MainActivity : AppCompatActivity() {
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            if (isBranded) {
-                setPadding(dp(OUTER_PADDING), dp(GAP), dp(OUTER_PADDING), dp(GAP))
-            } else {
-                setPadding(dp(16), dp(8), dp(16), dp(8))
-            }
+            setPadding(dp(16), dp(8), dp(16), dp(8))
         }
 
         val inputField = EditText(this).apply {
@@ -125,18 +232,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = dp(GAP)
             }
-            if (isBranded) {
-                textSize = BODY_FONT_SIZE
-                setTextColor(COLOR_TEXT_PRIMARY)
-                val bg = GradientDrawable().apply {
-                    setColor(COLOR_SURFACE)
-                    cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
-                }
-                background = bg
-                setPadding(dp(INNER_PADDING), dp(INNER_PADDING), dp(INNER_PADDING), dp(INNER_PADDING))
-            } else {
-                setBackgroundResource(android.R.drawable.edit_text)
-            }
+            setBackgroundResource(android.R.drawable.edit_text)
         }
         inputField.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
@@ -146,81 +242,37 @@ class MainActivity : AppCompatActivity() {
         }
         inputRow.addView(inputField)
 
-        if (isBranded) {
-            // Custom add button: 48dp filled rounded rect with "+" text
-            val addBtn = TextView(this).apply {
-                text = "+"
-                textSize = ICON_FONT_SIZE
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    setColor(COLOR_PRIMARY)
-                    cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
-                }
-                background = bg
-                layoutParams = LinearLayout.LayoutParams(dp(ADD_BUTTON_SIZE), dp(ADD_BUTTON_SIZE))
-                setOnClickListener { addTask(inputField) }
-            }
-            inputRow.addView(addBtn)
-        } else {
-            val addBtn = MaterialButton(this, null, com.google.android.material.R.attr.materialIconButtonFilledStyle).apply {
-                setIconResource(android.R.drawable.ic_input_add)
-                contentDescription = "Add task"
-                setOnClickListener { addTask(inputField) }
-            }
-            inputRow.addView(addBtn)
+        val addBtn = MaterialButton(this, null, com.google.android.material.R.attr.materialIconButtonFilledStyle).apply {
+            setIconResource(android.R.drawable.ic_input_add)
+            contentDescription = "Add task"
+            setOnClickListener { addTask(inputField) }
         }
+        inputRow.addView(addBtn)
         root.addView(inputRow)
 
-        // --- Task List ---
-        if (isBranded) {
-            // Branded: ScrollView + LinearLayout (not RecyclerView)
-            val scrollView = android.widget.ScrollView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-                )
-            }
-            val stack = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(dp(ROW_PADDING_H), dp(ROW_GAP), dp(ROW_PADDING_H), dp(ROW_GAP))
-            }
-            scrollView.addView(stack)
-            taskStack = stack
-            brandedScrollView = scrollView
-            root.addView(scrollView)
-        } else {
-            // Native: RecyclerView
-            val nativeAdapter = TaskAdapter(
-                onToggle = { task -> toggleTask(task) },
-                onDelete = { task -> deleteTask(task) },
-                isBranded = false
-            )
+        // --- Task List (RecyclerView) ---
+        val nativeAdapter = TaskAdapter(
+            onToggle = { task -> toggleTask(task) },
+            onDelete = { task -> deleteTask(task) },
+            isBranded = false
+        )
+        adapter = nativeAdapter
+        val rv = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = nativeAdapter
-            val rv = RecyclerView(this).apply {
-                layoutManager = LinearLayoutManager(this@MainActivity)
-                adapter = nativeAdapter
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-                )
-            }
-            recyclerView = rv
-            root.addView(rv)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
         }
+        recyclerView = rv
+        root.addView(rv)
 
         // --- Empty Label ---
         emptyLabel = TextView(this).apply {
             text = "No tasks yet.\nTap + to add one."
             textSize = 18f
             gravity = Gravity.CENTER
-            if (isBranded) {
-                setTextColor(COLOR_TEXT_SECONDARY)
-            } else {
-                setTextColor(0x88888888.toInt())
-            }
+            setTextColor(0x88888888.toInt())
             setPadding(dp(OUTER_PADDING), dp(48), dp(OUTER_PADDING), dp(48))
         }
         root.addView(emptyLabel)
@@ -229,114 +281,53 @@ class MainActivity : AppCompatActivity() {
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            if (isBranded) {
-                setPadding(dp(OUTER_PADDING), dp(GAP), dp(OUTER_PADDING), dp(OUTER_PADDING))
-            } else {
-                setPadding(dp(16), dp(8), dp(16), dp(16))
-            }
+            setPadding(dp(16), dp(8), dp(16), dp(16))
         }
 
-        if (isBranded) {
-            // Custom filter pills: rounded buttons with 16dp radius
-            val filterRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-            val pills = mutableListOf<TextView>()
-            for (filter in TaskFilter.values()) {
-                val pill = TextView(this).apply {
-                    text = when (filter) {
-                        TaskFilter.ALL -> "All"
-                        TaskFilter.ACTIVE -> "Active"
-                        TaskFilter.COMPLETED -> "Completed"
-                    }
-                    textSize = CAPTION_FONT_SIZE
-                    gravity = Gravity.CENTER
-                    setPadding(dp(INNER_PADDING), dp(GAP), dp(INNER_PADDING), dp(GAP))
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { marginEnd = dp(4) }
-                    setOnClickListener {
-                        currentFilter = filter
-                        updateFilterPills()
-                        refreshList()
-                    }
+        val toggleGroup = MaterialButtonToggleGroup(this).apply {
+            isSingleSelection = true
+            isSelectionRequired = true
+        }
+        val filterAll = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "All"
+            id = View.generateViewId()
+        }
+        val filterActive = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Active"
+            id = View.generateViewId()
+        }
+        val filterCompleted = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Completed"
+            id = View.generateViewId()
+        }
+        toggleGroup.addView(filterAll)
+        toggleGroup.addView(filterActive)
+        toggleGroup.addView(filterCompleted)
+        toggleGroup.check(filterAll.id)
+
+        toggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                currentFilter = when (checkedId) {
+                    filterAll.id -> TaskFilter.ALL
+                    filterActive.id -> TaskFilter.ACTIVE
+                    filterCompleted.id -> TaskFilter.COMPLETED
+                    else -> TaskFilter.ALL
                 }
-                pills.add(pill)
-                filterRow.addView(pill)
+                refreshList()
             }
-            filterPillButtons = pills
-            updateFilterPills()
-            bottomBar.addView(filterRow)
+        }
+        bottomBar.addView(toggleGroup)
 
-            clearButton = TextView(this).apply {
-                text = "Clear Completed"
-                textSize = CAPTION_FONT_SIZE
-                setTextColor(COLOR_ERROR)
-                gravity = Gravity.CENTER
-                setPadding(0, dp(GAP), 0, 0)
-                setOnClickListener { clearCompleted() }
-            }
-        } else {
-            val toggleGroup = MaterialButtonToggleGroup(this).apply {
-                isSingleSelection = true
-                isSelectionRequired = true
-            }
-            val filterAll = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "All"
-                id = View.generateViewId()
-            }
-            val filterActive = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "Active"
-                id = View.generateViewId()
-            }
-            val filterCompleted = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "Completed"
-                id = View.generateViewId()
-            }
-            toggleGroup.addView(filterAll)
-            toggleGroup.addView(filterActive)
-            toggleGroup.addView(filterCompleted)
-            toggleGroup.check(filterAll.id)
-
-            toggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
-                if (isChecked) {
-                    currentFilter = when (checkedId) {
-                        filterAll.id -> TaskFilter.ALL
-                        filterActive.id -> TaskFilter.ACTIVE
-                        filterCompleted.id -> TaskFilter.COMPLETED
-                        else -> TaskFilter.ALL
-                    }
-                    refreshList()
-                }
-            }
-            bottomBar.addView(toggleGroup)
-
-            clearButton = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
-                text = "Clear Completed"
-                setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorError, 0))
-                setOnClickListener { clearCompleted() }
-            }
+        clearButton = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = "Clear Completed"
+            setTextColor(com.google.android.material.color.MaterialColors.getColor(this, com.google.android.material.R.attr.colorError, 0))
+            setOnClickListener { clearCompleted() }
         }
         bottomBar.addView(clearButton)
 
         root.addView(bottomBar)
         setContentView(root)
         refreshList()
-    }
-
-    private fun updateFilterPills() {
-        for ((index, pill) in filterPillButtons.withIndex()) {
-            val filter = TaskFilter.values()[index]
-            val isActive = filter == currentFilter
-            val bg = GradientDrawable().apply {
-                cornerRadius = dp(FILTER_PILL_RADIUS.toInt()).toFloat()
-                if (isActive) setColor(COLOR_PRIMARY) else setColor(Color.TRANSPARENT)
-            }
-            pill.background = bg
-            pill.setTextColor(if (isActive) Color.WHITE else COLOR_TEXT_SECONDARY)
-        }
     }
 
     private fun addTask(inputField: EditText) {
@@ -363,29 +354,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshList() {
+        // Only used for native (non-branded) path; branded uses renderNimUI()
         val filtered = when (currentFilter) {
             TaskFilter.ALL -> tasks.map { it.copy() }
             TaskFilter.ACTIVE -> tasks.filter { !it.isCompleted }.map { it.copy() }
             TaskFilter.COMPLETED -> tasks.filter { it.isCompleted }.map { it.copy() }
         }
 
-        if (isBranded) {
-            // Branded: rebuild stacked plain views
-            val stack = taskStack ?: return
-            stack.removeAllViews()
-            for (task in filtered) {
-                stack.addView(createBrandedRow(task))
-            }
-            val empty = filtered.isEmpty()
-            brandedScrollView?.visibility = if (empty) View.GONE else View.VISIBLE
-            emptyLabel.visibility = if (empty) View.VISIBLE else View.GONE
-        } else {
-            // Native: RecyclerView adapter
-            adapter?.submitList(filtered)
-            val empty = filtered.isEmpty()
-            recyclerView?.visibility = if (empty) View.GONE else View.VISIBLE
-            emptyLabel.visibility = if (empty) View.VISIBLE else View.GONE
-        }
+        adapter?.submitList(filtered)
+        val empty = filtered.isEmpty()
+        recyclerView?.visibility = if (empty) View.GONE else View.VISIBLE
+        emptyLabel.visibility = if (empty) View.VISIBLE else View.GONE
 
         emptyLabel.text = when {
             filtered.isEmpty() && currentFilter == TaskFilter.ALL -> "No tasks yet.\nTap + to add one."
@@ -396,72 +375,6 @@ class MainActivity : AppCompatActivity() {
         val hasCompleted = tasks.any { it.isCompleted }
         clearButton.isEnabled = hasCompleted
         clearButton.alpha = if (hasCompleted) 1.0f else 0.4f
-    }
-
-    private fun createBrandedRow(task: Task): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(ROW_PADDING_H), dp(ROW_PADDING_V), dp(ROW_PADDING_H), dp(ROW_PADDING_V))
-            val bg = GradientDrawable().apply {
-                setColor(COLOR_SURFACE)
-                cornerRadius = dp(ROW_RADIUS.toInt()).toFloat()
-            }
-            background = bg
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(ROW_HEIGHT)
-            ).apply {
-                bottomMargin = dp(ROW_GAP)
-            }
-        }
-
-        // Custom checkbox
-        val checkboxView = TextView(this).apply {
-            gravity = Gravity.CENTER
-            textSize = BODY_FONT_SIZE
-            setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(dp(CHECKBOX_SIZE), dp(CHECKBOX_SIZE))
-            val checkBg = GradientDrawable().apply {
-                cornerRadius = dp(CHECKBOX_RADIUS.toInt()).toFloat()
-                if (task.isCompleted) {
-                    setColor(COLOR_PRIMARY)
-                } else {
-                    setColor(Color.TRANSPARENT)
-                    setStroke(dp(2), COLOR_BORDER)
-                }
-            }
-            background = checkBg
-            text = if (task.isCompleted) "\u2713" else ""
-            setOnClickListener { toggleTask(task) }
-        }
-        row.addView(checkboxView)
-
-        // Title label
-        val titleView = TextView(this).apply {
-            text = task.title
-            textSize = BODY_FONT_SIZE
-            setTextColor(if (task.isCompleted) COLOR_TEXT_DISABLED else COLOR_TEXT_PRIMARY)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = dp(INNER_PADDING)
-                marginEnd = dp(GAP)
-            }
-            maxLines = 1
-        }
-        row.addView(titleView)
-
-        // Delete button
-        val deleteBtn = TextView(this).apply {
-            text = "\u2715"
-            textSize = DELETE_ICON_SIZE
-            setTextColor(COLOR_ERROR)
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(CHECKBOX_SIZE), dp(CHECKBOX_SIZE))
-            setOnClickListener { deleteTask(task) }
-        }
-        row.addView(deleteBtn)
-
-        return row
     }
 
     private fun dp(value: Int): Int =

@@ -20,6 +20,31 @@ object NimBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var nextHandle: Long = 1
 
+    // --- Nim-driven UI: native methods (implemented in android_entry.nim) ---
+
+    init { System.loadLibrary("isonim") }
+
+    @JvmStatic external fun nimBuildBrandedUI(width: Int, height: Int): Int
+    @JvmStatic external fun nimRebuildUI(): Int
+    @JvmStatic external fun nimGetCommandCount(): Int
+    @JvmStatic external fun nimGetCommandKind(index: Int): String
+    @JvmStatic external fun nimGetCommandHandle(index: Int): Long
+    @JvmStatic external fun nimGetCommandTag(index: Int): String
+    @JvmStatic external fun nimGetCommandName(index: Int): String
+    @JvmStatic external fun nimGetCommandValue(index: Int): String
+    @JvmStatic external fun nimGetCommandParentHandle(index: Int): Long
+    @JvmStatic external fun nimGetCommandChildHandle(index: Int): Long
+    @JvmStatic external fun nimGetCommandRefHandle(index: Int): Long
+    @JvmStatic external fun nimGetCommandCallbackId(index: Int): Int
+    @JvmStatic external fun nimGetCommandEvent(index: Int): String
+    @JvmStatic external fun nimGetCommandTitle(index: Int): String
+    @JvmStatic external fun nimGetCommandMessage(index: Int): String
+    @JvmStatic external fun nimGetCommandButtonCount(index: Int): Int
+    @JvmStatic external fun nimHandleEvent(callbackId: Int)
+    @JvmStatic external fun nimSetInputText(text: String)
+    @JvmStatic external fun nimGetInputText(): String
+    @JvmStatic external fun nimAddTaskFromInput(): Int
+
     fun createView(tag: String, context: android.content.Context): Long {
         val handle = nextHandle++
         val view: View = when (tag) {
@@ -215,6 +240,128 @@ object NimBridge {
         eventCallbacks.clear()
         viewRegistry.clear()
         nextHandle = 1
+    }
+
+    // --- Command buffer execution (Nim-driven UI) ---
+
+    /**
+     * Execute the Nim command buffer: read each command from the native side
+     * and translate it into real Android View operations via NimBridge.
+     *
+     * @param context Android context for creating Views
+     * @param handleMap maps Nim handles (int64) to NimBridge handles (Long)
+     * @param onEvent callback invoked when a Nim-registered event fires;
+     *                receives the callbackId so Kotlin can call nimHandleEvent
+     * @return the NimBridge handle of the root view (first created view)
+     */
+    fun executeCommandBuffer(
+        context: android.content.Context,
+        onEvent: (Int) -> Unit
+    ): Long {
+        val count = nimGetCommandCount()
+        // Map from Nim-side handles to NimBridge-side handles
+        val handleMap = mutableMapOf<Long, Long>()
+        var rootHandle: Long = 0
+
+        for (i in 0 until count) {
+            val kind = nimGetCommandKind(i)
+            when (kind) {
+                "createView" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val tag = nimGetCommandTag(i)
+                    val bridgeHandle = createView(tag, context)
+                    handleMap[nimHandle] = bridgeHandle
+                    if (rootHandle == 0L) rootHandle = bridgeHandle
+                }
+                "createScrollView" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val bridgeHandle = createView("ScrollView", context)
+                    handleMap[nimHandle] = bridgeHandle
+                    if (rootHandle == 0L) rootHandle = bridgeHandle
+                }
+                "createRecyclerView" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val bridgeHandle = createView("RecyclerView", context)
+                    handleMap[nimHandle] = bridgeHandle
+                    if (rootHandle == 0L) rootHandle = bridgeHandle
+                }
+                "setText" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val value = nimGetCommandValue(i)
+                    val bh = handleMap[nimHandle] ?: continue
+                    setViewText(bh, value)
+                }
+                "appendChild" -> {
+                    val parentNim = nimGetCommandParentHandle(i)
+                    val childNim = nimGetCommandChildHandle(i)
+                    val parentBh = handleMap[parentNim] ?: continue
+                    val childBh = handleMap[childNim] ?: continue
+                    appendChildSync(parentBh, childBh)
+                }
+                "removeChild" -> {
+                    val parentNim = nimGetCommandParentHandle(i)
+                    val childNim = nimGetCommandChildHandle(i)
+                    val parentBh = handleMap[parentNim] ?: continue
+                    val childBh = handleMap[childNim] ?: continue
+                    removeChild(parentBh, childBh)
+                }
+                "insertBefore" -> {
+                    val parentNim = nimGetCommandParentHandle(i)
+                    val childNim = nimGetCommandChildHandle(i)
+                    val refNim = nimGetCommandRefHandle(i)
+                    val parentBh = handleMap[parentNim] ?: continue
+                    val childBh = handleMap[childNim] ?: continue
+                    val refBh = handleMap[refNim] ?: continue
+                    insertBefore(parentBh, childBh, refBh)
+                }
+                "setAttribute" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val name = nimGetCommandName(i)
+                    val value = nimGetCommandValue(i)
+                    val bh = handleMap[nimHandle] ?: continue
+                    setAttribute(bh, name, value)
+                }
+                "setStyle" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val prop = nimGetCommandName(i)
+                    val value = nimGetCommandValue(i)
+                    val bh = handleMap[nimHandle] ?: continue
+                    setStyle(bh, prop, value)
+                }
+                "setEventListener" -> {
+                    val nimHandle = nimGetCommandHandle(i)
+                    val event = nimGetCommandEvent(i)
+                    val callbackId = nimGetCommandCallbackId(i)
+                    val bh = handleMap[nimHandle] ?: continue
+                    val view = getView(bh) ?: continue
+                    when (event) {
+                        "click" -> view.setOnClickListener { onEvent(callbackId) }
+                        "longPress" -> view.setOnLongClickListener {
+                            onEvent(callbackId); true
+                        }
+                    }
+                }
+                "showAlert" -> {
+                    // Alerts are deferred — the caller can read title/message
+                    // from the command if needed
+                }
+                "showToast" -> {
+                    val message = nimGetCommandValue(i)
+                    val duration = nimGetCommandName(i)
+                    val d = if (duration == "long") android.widget.Toast.LENGTH_LONG
+                            else android.widget.Toast.LENGTH_SHORT
+                    android.widget.Toast.makeText(context, message, d).show()
+                }
+            }
+        }
+        return rootHandle
+    }
+
+    /** Synchronous appendChild (for command buffer execution on the main thread). */
+    fun appendChildSync(parentHandle: Long, childHandle: Long) {
+        val parent = viewRegistry[parentHandle] as? ViewGroup ?: return
+        val child = viewRegistry[childHandle] ?: return
+        parent.addView(child)
     }
 
     class NimRecyclerAdapter(
