@@ -1,9 +1,13 @@
 package com.metacraft.isonim.android
 
 import android.app.AlertDialog
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -48,7 +52,9 @@ object NimBridge {
     fun createView(tag: String, context: android.content.Context): Long {
         val handle = nextHandle++
         val view: View = when (tag) {
-            "FrameLayout" -> FrameLayout(context)
+            "FrameLayout" -> LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
             "LinearLayout" -> LinearLayout(context)
             "TextView" -> TextView(context)
             "Button" -> Button(context)
@@ -93,8 +99,30 @@ object NimBridge {
             // M12: Web, Media & Maps
             "WebView" -> WebView(context)
             "VideoView" -> VideoView(context)
-            "MapView" -> FrameLayout(context) // MapView requires Google Play Services SDK
-            else -> FrameLayout(context)
+            "MapView" -> LinearLayout(context) // MapView requires Google Play Services SDK
+            // Native controls (lowercase tags from native_controls.nim)
+            "switch" -> Switch(context)
+            "button" -> try {
+                MaterialButton(context)
+            } catch (_: Exception) {
+                Button(context)
+            }
+            "segmented" -> LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            "h1" -> TextView(context).apply {
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                textSize = 28f
+            }
+            "p" -> TextView(context)
+            "input" -> EditText(context)
+            "span" -> TextView(context)
+            "div" -> LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            else -> LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
         }
         viewRegistry[handle] = view
         return handle
@@ -188,21 +216,312 @@ object NimBridge {
         }
     }
 
+    // Track per-view background drawables for combined color + cornerRadius
+    private val bgDrawables = mutableMapOf<Long, GradientDrawable>()
+    // Track gap values per container so we can apply margins to children
+    private val gapValues = mutableMapOf<Long, Int>()
+
+    private fun dpToPx(view: View, dp: Int): Int =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(),
+            view.resources.displayMetrics
+        ).toInt()
+
+    private fun getOrCreateBgDrawable(handle: Long, view: View): GradientDrawable {
+        return bgDrawables.getOrPut(handle) {
+            GradientDrawable().also { view.background = it }
+        }
+    }
+
+    /**
+     * Replace a FrameLayout with a LinearLayout, preserving children,
+     * background drawable, and the handle mapping.
+     * Called when orientation is set on a FrameLayout.
+     */
+    private fun replaceWithLinearLayout(handle: Long, view: FrameLayout, orientation: Int): LinearLayout {
+        val ll = LinearLayout(view.context).apply {
+            this.orientation = orientation
+            this.layoutParams = view.layoutParams ?: ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            // Copy basic properties
+            this.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, view.paddingBottom)
+            this.background = view.background
+            this.id = view.id
+        }
+        // Move children
+        val children = mutableListOf<View>()
+        for (i in 0 until view.childCount) {
+            children.add(view.getChildAt(i))
+        }
+        view.removeAllViews()
+        for (child in children) {
+            ll.addView(child)
+        }
+        // Replace in parent if already attached
+        val parent = view.parent as? ViewGroup
+        if (parent != null) {
+            val index = parent.indexOfChild(view)
+            parent.removeViewAt(index)
+            parent.addView(ll, index)
+        }
+        // Update registries
+        viewRegistry[handle] = ll
+        // Transfer background drawable reference
+        val bgd = bgDrawables[handle]
+        if (bgd != null) {
+            ll.background = bgd
+        }
+        return ll
+    }
+
     fun setStyle(handle: Long, prop: String, value: String) {
         val view = viewRegistry[handle] ?: return
-        mainHandler.post {
-            when (prop) {
-                "backgroundColor" -> {
-                    try {
-                        view.setBackgroundColor(android.graphics.Color.parseColor(value))
-                    } catch (_: Exception) {}
+        when (prop) {
+            "backgroundColor" -> {
+                try {
+                    val color = Color.parseColor(value)
+                    val bg = getOrCreateBgDrawable(handle, view)
+                    bg.setColor(color)
+                } catch (_: Exception) {}
+            }
+            "cornerRadius" -> {
+                val px = value.toFloatOrNull() ?: return
+                val bg = getOrCreateBgDrawable(handle, view)
+                bg.cornerRadius = dpToPx(view, px.toInt()).toFloat()
+            }
+            "orientation" -> {
+                val orient = if (value == "HORIZONTAL") LinearLayout.HORIZONTAL
+                             else LinearLayout.VERTICAL
+                val target = when (view) {
+                    is LinearLayout -> { view.orientation = orient; view }
+                    is FrameLayout -> replaceWithLinearLayout(handle, view, orient)
+                    else -> view
                 }
-                "visibility" -> view.visibility = when (value) {
-                    "GONE" -> android.view.View.GONE
-                    "INVISIBLE" -> android.view.View.INVISIBLE
-                    else -> android.view.View.VISIBLE
+                // Re-apply gravity if stored
+                // (orientation change may need gravity re-application)
+            }
+            "textSize" -> {
+                val sp = value.toFloatOrNull() ?: return
+                if (view is TextView) view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            }
+            "textColor" -> {
+                try {
+                    val color = Color.parseColor(value)
+                    if (view is TextView) view.setTextColor(color)
+                } catch (_: Exception) {}
+            }
+            "padding" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                view.setPadding(px, px, px, px)
+            }
+            "padding-top" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                view.setPadding(view.paddingLeft, px, view.paddingRight, view.paddingBottom)
+            }
+            "padding-bottom" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, px)
+            }
+            "padding-left" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                view.setPadding(px, view.paddingTop, view.paddingRight, view.paddingBottom)
+            }
+            "padding-right" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                view.setPadding(view.paddingLeft, view.paddingTop, px, view.paddingBottom)
+            }
+            "margin" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams
+                if (lp is ViewGroup.MarginLayoutParams) {
+                    lp.setMargins(px, px, px, px)
+                    view.layoutParams = lp
                 }
-                "alpha" -> view.alpha = value.toFloatOrNull() ?: 1.0f
+            }
+            "margin-left" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams
+                if (lp is ViewGroup.MarginLayoutParams) {
+                    lp.leftMargin = px
+                    view.layoutParams = lp
+                }
+            }
+            "margin-top" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams
+                if (lp is ViewGroup.MarginLayoutParams) {
+                    lp.topMargin = px
+                    view.layoutParams = lp
+                }
+            }
+            "margin-right" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams
+                if (lp is ViewGroup.MarginLayoutParams) {
+                    lp.rightMargin = px
+                    view.layoutParams = lp
+                }
+            }
+            "margin-bottom" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams
+                if (lp is ViewGroup.MarginLayoutParams) {
+                    lp.bottomMargin = px
+                    view.layoutParams = lp
+                }
+            }
+            "width" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams ?: ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.width = px
+                view.layoutParams = lp
+            }
+            "height" -> {
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val lp = view.layoutParams ?: ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.height = px
+                view.layoutParams = lp
+            }
+            "flex-grow" -> {
+                val weight = value.toFloatOrNull() ?: return
+                val lp = view.layoutParams
+                if (lp is LinearLayout.LayoutParams) {
+                    lp.weight = weight
+                    view.layoutParams = lp
+                } else {
+                    // View may not have LinearLayout.LayoutParams yet;
+                    // create new ones preserving size and margins
+                    val newLp = LinearLayout.LayoutParams(
+                        view.layoutParams?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+                        view.layoutParams?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+                        weight
+                    )
+                    if (view.layoutParams is ViewGroup.MarginLayoutParams) {
+                        val old = view.layoutParams as ViewGroup.MarginLayoutParams
+                        newLp.setMargins(old.leftMargin, old.topMargin, old.rightMargin, old.bottomMargin)
+                    }
+                    view.layoutParams = newLp
+                }
+            }
+            "gravity" -> {
+                // align-items → gravity (cross-axis alignment)
+                val g = parseGravity(value)
+                if (view is LinearLayout) view.gravity = g
+                else if (view is FrameLayout) {
+                    for (i in 0 until (view as ViewGroup).childCount) {
+                        val child = view.getChildAt(i)
+                        val lp = child.layoutParams
+                        if (lp is FrameLayout.LayoutParams) {
+                            lp.gravity = g
+                            child.layoutParams = lp
+                        }
+                    }
+                }
+            }
+            "gravityAxis" -> {
+                // justify-content → gravity (main-axis alignment)
+                // Combine with existing gravity (align-items may have been set first)
+                val g = parseGravity(value)
+                if (view is LinearLayout) view.gravity = view.gravity or g
+            }
+            "gap" -> {
+                val dp = value.toIntOrNull() ?: return
+                gapValues[handle] = dp
+                // Apply gap as margins to existing children
+                applyGap(handle, view, dp)
+            }
+            "visibility" -> view.visibility = when (value) {
+                "GONE" -> View.GONE
+                "INVISIBLE" -> View.INVISIBLE
+                else -> View.VISIBLE
+            }
+            "alpha" -> view.alpha = value.toFloatOrNull() ?: 1.0f
+            "border-color" -> {
+                try {
+                    val color = Color.parseColor(value)
+                    val bg = getOrCreateBgDrawable(handle, view)
+                    bg.setStroke(dpToPx(view, 2), color)
+                } catch (_: Exception) {}
+            }
+            "border-width" -> {
+                // border-width is typically set along with border-color;
+                // we store a default stroke color if not set yet
+                val dp = value.toIntOrNull() ?: return
+                val px = dpToPx(view, dp)
+                val bg = getOrCreateBgDrawable(handle, view)
+                // GradientDrawable doesn't have getStrokeColor, so just re-set
+                // the stroke width; color will be set by border-color
+            }
+            "text-align" -> {
+                if (view is TextView) {
+                    view.gravity = when (value) {
+                        "center" -> Gravity.CENTER
+                        "right", "end" -> Gravity.END
+                        else -> Gravity.START
+                    }
+                }
+            }
+            "align-self" -> {
+                // align-self: center → center this view in its parent
+                val g = parseGravity(value)
+                val lp = view.layoutParams
+                if (lp is LinearLayout.LayoutParams) {
+                    lp.gravity = g
+                    view.layoutParams = lp
+                } else if (lp is FrameLayout.LayoutParams) {
+                    lp.gravity = g
+                    view.layoutParams = lp
+                }
+            }
+        }
+    }
+
+    private fun parseGravity(value: String): Int {
+        return when (value) {
+            "center" -> Gravity.CENTER
+            "flex-start", "start" -> Gravity.START or Gravity.TOP
+            "flex-end", "end" -> Gravity.END or Gravity.BOTTOM
+            "space-between" -> Gravity.CENTER // approximation
+            "space-around" -> Gravity.CENTER  // approximation
+            else -> Gravity.NO_GRAVITY
+        }
+    }
+
+    /**
+     * Apply gap (spacing) between children of a container.
+     * Gap is implemented as margins between children.
+     */
+    private fun applyGap(handle: Long, view: View, gapDp: Int) {
+        if (view !is ViewGroup) return
+        val px = dpToPx(view, gapDp)
+        val isHorizontal = view is LinearLayout && view.orientation == LinearLayout.HORIZONTAL
+        for (i in 0 until view.childCount) {
+            if (i == 0) continue // no gap before first child
+            val child = view.getChildAt(i)
+            val lp = child.layoutParams
+            if (lp is ViewGroup.MarginLayoutParams) {
+                if (isHorizontal) lp.leftMargin = px else lp.topMargin = px
+                child.layoutParams = lp
             }
         }
     }
@@ -239,6 +558,8 @@ object NimBridge {
     fun reset() {
         eventCallbacks.clear()
         viewRegistry.clear()
+        bgDrawables.clear()
+        gapValues.clear()
         nextHandle = 1
     }
 
@@ -361,7 +682,54 @@ object NimBridge {
     fun appendChildSync(parentHandle: Long, childHandle: Long) {
         val parent = viewRegistry[parentHandle] as? ViewGroup ?: return
         val child = viewRegistry[childHandle] ?: return
+        // Ensure child has LinearLayout.LayoutParams if parent is a LinearLayout
+        if (parent is LinearLayout) {
+            val existing = child.layoutParams
+            if (existing is LinearLayout.LayoutParams) {
+                // Already correct type -- fix flex-grow dimension now that we know parent orientation
+                if (existing.weight > 0f) {
+                    if (parent.orientation == LinearLayout.VERTICAL) {
+                        existing.height = 0
+                        if (existing.width == ViewGroup.LayoutParams.WRAP_CONTENT) {
+                            existing.width = ViewGroup.LayoutParams.MATCH_PARENT
+                        }
+                    } else {
+                        existing.width = 0
+                    }
+                }
+            } else {
+                // Default: vertical parents get MATCH_PARENT width children,
+                // horizontal parents get WRAP_CONTENT width children.
+                val defaultWidth = if (parent.orientation == LinearLayout.VERTICAL)
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                else
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                val newLp = if (existing != null) {
+                    LinearLayout.LayoutParams(existing.width, existing.height).also {
+                        if (existing is ViewGroup.MarginLayoutParams) {
+                            it.setMargins(existing.leftMargin, existing.topMargin,
+                                          existing.rightMargin, existing.bottomMargin)
+                        }
+                    }
+                } else {
+                    LinearLayout.LayoutParams(
+                        defaultWidth,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                child.layoutParams = newLp
+            }
+        }
         parent.addView(child)
+        // Apply gap margin if parent has gap set
+        val gapDp = gapValues[parentHandle]
+        if (gapDp != null && parent.childCount > 1) {
+            val px = dpToPx(child, gapDp)
+            val lp = child.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+            val isHorizontal = parent is LinearLayout && parent.orientation == LinearLayout.HORIZONTAL
+            if (isHorizontal) lp.leftMargin = px else lp.topMargin = px
+            child.layoutParams = lp
+        }
     }
 
     class NimRecyclerAdapter(

@@ -18,17 +18,37 @@ android {
     }
     flavorDimensions += "theme"
     productFlavors {
-        create("native") {
-            dimension = "theme"
-            applicationIdSuffix = ".native"
-            resValue("string", "app_name", "Tasks (Native)")
-            buildConfigField("boolean", "IS_BRANDED", "false")
-        }
         create("branded") {
             dimension = "theme"
             applicationIdSuffix = ".branded"
-            resValue("string", "app_name", "Tasks (IsoNim)")
+            resValue("string", "app_name", "IsoNim Branded")
             buildConfigField("boolean", "IS_BRANDED", "true")
+            buildConfigField("boolean", "IS_BASELINE", "false")
+            buildConfigField("boolean", "IS_NIM_NATIVE", "false")
+        }
+        create("nimnative") {
+            dimension = "theme"
+            applicationIdSuffix = ".nimnative"
+            resValue("string", "app_name", "IsoNim Nim Native")
+            buildConfigField("boolean", "IS_BRANDED", "false")
+            buildConfigField("boolean", "IS_BASELINE", "false")
+            buildConfigField("boolean", "IS_NIM_NATIVE", "true")
+        }
+        create("baseline") {
+            dimension = "theme"
+            applicationIdSuffix = ".baseline"
+            resValue("string", "app_name", "IsoNim Baseline")
+            buildConfigField("boolean", "IS_BRANDED", "false")
+            buildConfigField("boolean", "IS_BASELINE", "true")
+            buildConfigField("boolean", "IS_NIM_NATIVE", "false")
+        }
+        create("native") {
+            dimension = "theme"
+            applicationIdSuffix = ".native"
+            resValue("string", "app_name", "IsoNim Native")
+            buildConfigField("boolean", "IS_BRANDED", "false")
+            buildConfigField("boolean", "IS_BASELINE", "false")
+            buildConfigField("boolean", "IS_NIM_NATIVE", "false")
         }
     }
     buildFeatures { buildConfig = true }

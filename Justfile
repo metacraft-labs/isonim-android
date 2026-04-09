@@ -22,7 +22,7 @@ build-native:
       --clang.exe:"$NDK_CC" \
       --clang.linkerexe:"$NDK_CC" \
       --passC:"-fPIC" \
-      --passL:"-shared -llog" \
+      --passL:"-shared -llog -nostdlib++ -lc++_static -lc++abi" \
       --app:lib \
       --noMain \
       -d:commandBuffer \
@@ -30,6 +30,30 @@ build-native:
       -o:app/src/main/jniLibs/arm64-v8a/libisonim.so \
       nim-lib/src/isonim_android/android_entry.nim
     echo "Built: app/src/main/jniLibs/arm64-v8a/libisonim.so"
+    file app/src/main/jniLibs/arm64-v8a/libisonim.so
+
+# Build Nim .so for Android ARM64 with native controls (via -d:nativeControls)
+build-native-controls:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    NDK_CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android34-clang"
+    mkdir -p app/src/main/jniLibs/arm64-v8a
+    nim c \
+      --os:android --cpu:arm64 \
+      --cc:clang \
+      --clang.exe:"$NDK_CC" \
+      --clang.linkerexe:"$NDK_CC" \
+      --passC:"-fPIC" \
+      --passL:"-shared -llog -nostdlib++ -lc++_static -lc++abi" \
+      --app:lib \
+      --noMain \
+      -d:commandBuffer \
+      -d:nativeControls \
+      -d:android \
+      --nimcache:nimcache/android-arm64-native \
+      -o:app/src/main/jniLibs/arm64-v8a/libisonim.so \
+      nim-lib/src/isonim_android/android_entry_native.nim
+    echo "Built (native controls): app/src/main/jniLibs/arm64-v8a/libisonim.so"
     file app/src/main/jniLibs/arm64-v8a/libisonim.so
 
 # Run Nim tests (Tier 1 — macOS, no Android)
@@ -94,8 +118,20 @@ deploy-branded:
     adb shell am start -n com.metacraft.isonim.android.branded/com.metacraft.isonim.android.MainActivity
     echo "Branded app launched"
 
-# Deploy both variants
+# Deploy both variants (legacy)
 deploy-both: deploy-native deploy-branded
+
+# Deploy nimnative (Nim-powered native controls) app to phone
+deploy-nimnative:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just build-native-controls
+    ./gradlew :app:assembleNimnativeDebug 2>&1 | tail -2
+    APK=$(find app/build -name "*nimnative-debug.apk" | head -1)
+    echo "Installing $APK..."
+    adb install -r "$APK"
+    adb shell am start -n com.metacraft.isonim.android.nimnative/com.metacraft.isonim.android.MainActivity
+    echo "Nim Native app launched"
 
 # Render all branded scenario snapshots via Paparazzi (no emulator)
 test-snapshots:
@@ -111,5 +147,5 @@ snapshot-verify:
 
 # Clean
 clean:
-    rm -rf nimcache/ app/src/main/jniLibs/arm64-v8a/libisonim.so
+    rm -rf nimcache/ app/src/main/jniLibs/arm64-v8a/libisonim.so app/src/main/jniLibs/arm64-v8a/libisonim_native.so
     ./gradlew clean

@@ -66,17 +66,15 @@ class MainActivity : AppCompatActivity() {
         const val DELETE_ICON_SIZE = 20f
     }
 
-    private val isBranded: Boolean
-        get() = BuildConfig.IS_BRANDED
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SchedulerState.resumed()
 
-        if (isBranded) {
-            createBrandedNimUI()
-        } else {
-            createNativeUI()
+        when {
+            BuildConfig.IS_BRANDED -> createBrandedNimUI()
+            BuildConfig.IS_NIM_NATIVE -> createBrandedNimUI()  // same Nim UI path; .so compiled with -d:nativeControls
+            BuildConfig.IS_BASELINE -> createBaselineUI()
+            else -> createNativeUI()
         }
     }
 
@@ -95,6 +93,16 @@ class MainActivity : AppCompatActivity() {
         }
         nimRootContainer = container
 
+        // --- Title (matches baseline: bold, 32sp, with top padding for status bar) ---
+        val titleBar = TextView(this).apply {
+            text = "Tasks"
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            textSize = TITLE_FONT_SIZE
+            setTextColor(COLOR_TEXT_PRIMARY)
+            setPadding(dp(OUTER_PADDING), dp(48), dp(OUTER_PADDING), dp(GAP))
+        }
+        container.addView(titleBar)
+
         // --- Kotlin-owned input row (keyboard needs a real EditText) ---
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -108,7 +116,7 @@ class MainActivity : AppCompatActivity() {
             textSize = BODY_FONT_SIZE
             setTextColor(COLOR_TEXT_PRIMARY)
             val bg = GradientDrawable().apply {
-                setColor(COLOR_SURFACE)
+                setColor(0xFFF1F5F9.toInt())  // inputBackground
                 cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
             }
             background = bg
@@ -133,7 +141,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             val bg = GradientDrawable().apply {
                 setColor(COLOR_PRIMARY)
-                cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
+                cornerRadius = dp(ADD_BUTTON_SIZE / 2).toFloat()  // circular
             }
             background = bg
             layoutParams = LinearLayout.LayoutParams(dp(ADD_BUTTON_SIZE), dp(ADD_BUTTON_SIZE))
@@ -192,10 +200,194 @@ class MainActivity : AppCompatActivity() {
         if (rootView != null) {
             // Remove from any existing parent before adding
             (rootView.parent as? ViewGroup)?.removeView(rootView)
+
+            // Hide Nim's title (child 0) and input row (child 1) since
+            // Kotlin provides its own title and input row with real keyboard support.
+            if (rootView is ViewGroup) {
+                if (rootView.childCount > 0) {
+                    rootView.getChildAt(0).visibility = View.GONE  // title
+                }
+                if (rootView.childCount > 1) {
+                    rootView.getChildAt(1).visibility = View.GONE  // input row
+                }
+            }
+
             content.addView(rootView, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                LinearLayout.LayoutParams.MATCH_PARENT, 1f
             ))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Baseline: pure-Kotlin UI with isoTheme colors (visual reference)
+    // -----------------------------------------------------------------------
+
+    private fun createBaselineUI() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(COLOR_BACKGROUND)
+        }
+
+        // --- Title ---
+        val titleBar = TextView(this).apply {
+            text = "Tasks"
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            textSize = TITLE_FONT_SIZE
+            setTextColor(COLOR_TEXT_PRIMARY)
+            setPadding(dp(OUTER_PADDING), dp(48), dp(OUTER_PADDING), dp(GAP))
+        }
+        root.addView(titleBar)
+
+        // --- Input Row ---
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(OUTER_PADDING), dp(GAP), dp(OUTER_PADDING), dp(GAP))
+        }
+
+        val inputField = EditText(this).apply {
+            hint = "What needs to be done?"
+            setSingleLine()
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            textSize = BODY_FONT_SIZE
+            setTextColor(COLOR_TEXT_PRIMARY)
+            val bg = GradientDrawable().apply {
+                setColor(0xFFF1F5F9.toInt())
+                cornerRadius = dp(BUTTON_RADIUS.toInt()).toFloat()
+            }
+            background = bg
+            setPadding(dp(INNER_PADDING), dp(INNER_PADDING), dp(INNER_PADDING), dp(INNER_PADDING))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(GAP)
+            }
+        }
+        inputField.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                addTask(inputField)
+                true
+            } else false
+        }
+        inputRow.addView(inputField)
+
+        val addBtn = TextView(this).apply {
+            text = "+"
+            textSize = ICON_FONT_SIZE
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                setColor(COLOR_PRIMARY)
+                cornerRadius = dp(ADD_BUTTON_SIZE / 2).toFloat()
+            }
+            background = bg
+            layoutParams = LinearLayout.LayoutParams(dp(ADD_BUTTON_SIZE), dp(ADD_BUTTON_SIZE))
+            setOnClickListener { addTask(inputField) }
+        }
+        inputRow.addView(addBtn)
+        root.addView(inputRow)
+
+        // --- Task List (RecyclerView) ---
+        val baselineAdapter = TaskAdapter(
+            onToggle = { task -> toggleTask(task) },
+            onDelete = { task -> deleteTask(task) },
+            isBranded = true  // reuse branded styling (isoTheme colors)
+        )
+        adapter = baselineAdapter
+        val rv = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = baselineAdapter
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        }
+        recyclerView = rv
+        root.addView(rv)
+
+        // --- Empty Label ---
+        emptyLabel = TextView(this).apply {
+            text = "No tasks yet.\nTap + to add one."
+            textSize = BODY_FONT_SIZE
+            gravity = Gravity.CENTER
+            setTextColor(COLOR_TEXT_SECONDARY)
+            setPadding(dp(OUTER_PADDING), dp(48), dp(OUTER_PADDING), dp(48))
+        }
+        root.addView(emptyLabel)
+
+        // --- Filter Bar ---
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(OUTER_PADDING), dp(GAP), dp(OUTER_PADDING), dp(OUTER_PADDING))
+        }
+
+        val filterRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+
+        fun createFilterPill(label: String, filter: TaskFilter): TextView {
+            return TextView(this).apply {
+                text = label
+                textSize = CAPTION_FONT_SIZE
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = dp(GAP) }
+                setOnClickListener {
+                    currentFilter = filter
+                    refreshBaselineFilters(filterRow)
+                    refreshList()
+                }
+            }
+        }
+
+        val pillAll = createFilterPill("All", TaskFilter.ALL)
+        val pillActive = createFilterPill("Active", TaskFilter.ACTIVE)
+        val pillCompleted = createFilterPill("Completed", TaskFilter.COMPLETED)
+        filterRow.addView(pillAll)
+        filterRow.addView(pillActive)
+        filterRow.addView(pillCompleted)
+        bottomBar.addView(filterRow)
+
+        val clearBtn = TextView(this).apply {
+            text = "Clear Completed"
+            textSize = CAPTION_FONT_SIZE
+            setTextColor(COLOR_ERROR)
+            gravity = Gravity.CENTER
+            setPadding(dp(OUTER_PADDING), dp(GAP), dp(OUTER_PADDING), dp(GAP))
+            setOnClickListener { clearCompleted() }
+        }
+        clearButton = clearBtn
+        bottomBar.addView(clearBtn)
+
+        root.addView(bottomBar)
+        setContentView(root)
+        refreshBaselineFilters(filterRow)
+        refreshList()
+    }
+
+    private fun refreshBaselineFilters(filterRow: LinearLayout) {
+        for (i in 0 until filterRow.childCount) {
+            val pill = filterRow.getChildAt(i) as TextView
+            val filter = when (i) {
+                0 -> TaskFilter.ALL
+                1 -> TaskFilter.ACTIVE
+                else -> TaskFilter.COMPLETED
+            }
+            val isActive = currentFilter == filter
+            val bg = GradientDrawable().apply {
+                cornerRadius = dp(FILTER_PILL_RADIUS.toInt()).toFloat()
+                if (isActive) {
+                    setColor(COLOR_PRIMARY)
+                } else {
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(1), COLOR_BORDER)
+                }
+            }
+            pill.background = bg
+            pill.setTextColor(if (isActive) Color.WHITE else COLOR_TEXT_SECONDARY)
         }
     }
 
