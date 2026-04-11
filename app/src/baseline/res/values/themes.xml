@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.IsoNimAndroid" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- IsoNim branded: Indigo/Slate (same as branded flavor) -->
+        <item name="colorPrimary">#6366F1</item>
+        <item name="colorPrimaryVariant">#4F46E5</item>
+        <item name="colorSecondary">#8B5CF6</item>
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorOnSurface">#1E293B</item>
+        <item name="colorError">#EF4444</item>
+        <item name="android:colorBackground">#F8FAFC</item>
+    </style>
+</resources>

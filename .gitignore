@@ -10,6 +10,12 @@ tests/test_textcontrols
 tests/test_selectioncontrols
 tests/test_dialogs
 tests/test_cross_renderer
+tests/test_accessibility
+tests/test_media
+tests/test_navigation
+tests/test_progress
+tests/test_theme_android
+nim-lib/src/isonim_android/renderer
 *.apk
 *.aab
 .gradle/

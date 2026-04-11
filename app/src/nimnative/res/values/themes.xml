@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.IsoNimAndroid" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Platform default Material colors (same as native flavor) -->
+        <item name="colorPrimary">#6200EE</item>
+        <item name="colorPrimaryVariant">#3700B3</item>
+        <item name="colorSecondary">#03DAC6</item>
+    </style>
+</resources>
