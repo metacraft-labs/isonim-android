@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Theme for the `nimexamples` flavor. Material Components with no
+      action bar so the Nim composition root owns the top-of-screen
+      surface (the legacy nimnative flavor uses the same parent).
+    -->
+    <style name="Theme.IsoNimExamples" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#6366F1</item>
+        <item name="colorPrimaryVariant">#4F46E5</item>
+        <item name="colorSecondary">#22D3EE</item>
+    </style>
+</resources>
