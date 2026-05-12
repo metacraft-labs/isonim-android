@@ -2,10 +2,9 @@ package com.metacraft.isonim.examples
 
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.action.ViewActions.clearText
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.closeSoftKeyboard
-import androidx.test.espresso.action.ViewActions.typeText
+import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
@@ -49,8 +48,12 @@ class TaskAppScenarioTest {
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
 
             // ---------------- Step 1: add "buy milk" ----------------
+            // `replaceText` sets the EditText content directly via setText,
+            // bypassing the platform IME and the latency window where
+            // `typeText` could race the subsequent click (a ~25% flake
+            // observed with `clearText + typeText + closeSoftKeyboard`).
             onView(withContentDescription("task_input"))
-                .perform(clearText(), typeText("buy milk"), closeSoftKeyboard())
+                .perform(replaceText("buy milk"), closeSoftKeyboard())
             onView(withContentDescription("add_button")).perform(click())
 
             onView(withContentDescription("task_label_0"))
@@ -59,7 +62,7 @@ class TaskAppScenarioTest {
 
             // ---------------- Step 2: add "wash car" ----------------
             onView(withContentDescription("task_input"))
-                .perform(clearText(), typeText("wash car"), closeSoftKeyboard())
+                .perform(replaceText("wash car"), closeSoftKeyboard())
             onView(withContentDescription("add_button")).perform(click())
 
             onView(withContentDescription("task_label_0")).check(matches(withText("buy milk")))
@@ -69,7 +72,7 @@ class TaskAppScenarioTest {
 
             // ---------------- Step 3: add "call mom" ----------------
             onView(withContentDescription("task_input"))
-                .perform(clearText(), typeText("call mom"), closeSoftKeyboard())
+                .perform(replaceText("call mom"), closeSoftKeyboard())
             onView(withContentDescription("add_button")).perform(click())
 
             onView(withContentDescription("task_label_0")).check(matches(withText("buy milk")))

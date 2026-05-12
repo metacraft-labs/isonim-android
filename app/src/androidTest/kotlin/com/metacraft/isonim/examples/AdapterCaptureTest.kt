@@ -2,10 +2,9 @@ package com.metacraft.isonim.examples
 
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.action.ViewActions.clearText
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.closeSoftKeyboard
-import androidx.test.espresso.action.ViewActions.typeText
+import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -174,11 +173,13 @@ class AdapterCaptureTest {
             assertEquals("frame0 length", (width * height * 4).toLong(),
                 frame0.size.toLong())
 
-            // Drive a scripted task-app mutation: type "from android"
-            // into the input, click "Add Task".
+            // Drive a scripted task-app mutation: replace the input
+            // text with "from android", click "Add Task". `replaceText`
+            // sets the EditText content directly via setText, bypassing
+            // the platform IME and the latency window where `typeText`
+            // could race the subsequent click.
             onView(withContentDescription("task_input"))
-                .perform(clearText(), typeText("from android"),
-                         closeSoftKeyboard())
+                .perform(replaceText("from android"), closeSoftKeyboard())
             onView(withContentDescription("add_button")).perform(click())
 
             // Frame 1: one task row visible — the bytes must differ.
@@ -191,7 +192,7 @@ class AdapterCaptureTest {
                 if (frame0[k] != frame1[k]) diffBytes++
             }
             assertNotEquals(
-                "frame0 and frame1 must differ after typeText + addTask",
+                "frame0 and frame1 must differ after replaceText + addTask",
                 0, diffBytes
             )
             // The added row also adds a "[ ]"/"x"/label triplet
@@ -206,8 +207,7 @@ class AdapterCaptureTest {
             // Drive a second mutation: add a second task. Frame 2 must
             // again differ from frame 1.
             onView(withContentDescription("task_input"))
-                .perform(clearText(), typeText("another one"),
-                         closeSoftKeyboard())
+                .perform(replaceText("another one"), closeSoftKeyboard())
             onView(withContentDescription("add_button")).perform(click())
 
             val frame2 = TaskAppBridge.captureRootViewToRgba(width, height)
