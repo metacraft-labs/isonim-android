@@ -154,18 +154,61 @@ val stageNimTaskAppJniLib by tasks.registering(Copy::class) {
     into(nimTaskAppJniLibsDir)
 }
 
+// ---------------------------------------------------------------------------
+// EX-M22: Build the canonical `settings_app` Nim shared library
+// (`libsettings_app.so`) from
+// `isonim-examples/settings_app/main_android_entry.nim` and stage it
+// alongside `libtask_app.so` in the `nimexamples` flavor's
+// `jniLibs/arm64-v8a/` directory.
+//
+// Shipped as a SECOND shared library (variant B in the EX-M22
+// architectural notes) so the EX-M6 task_app surface stays
+// byte-untouched. Both libs coexist in the same Android process; the
+// Kotlin shell routes to whichever one matches the active demo Intent.
+// ---------------------------------------------------------------------------
+
+val buildNimSettingsApp by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Cross-compile isonim-examples/settings_app/main_android_entry.nim to libsettings_app.so via `just demo-build-android-settings`."
+    workingDir = rootProject.projectDir
+    commandLine = listOf("just", "demo-build-android-settings")
+    outputs.file("nimcache/settings-android/libsettings_app.so")
+    inputs.files(
+        fileTree("${rootProject.projectDir}/../isonim-examples/settings_app") { include("**/*.nim") },
+        fileTree("${rootProject.projectDir}/nim-lib/src/isonim_android") { include("**/*.nim") },
+        fileTree("${rootProject.projectDir}/../isonim-render-serve/src") { include("**/*.nim") }
+    )
+}
+
+val stageNimSettingsAppJniLib by tasks.registering(Copy::class) {
+    group = "build"
+    description = "Copy the cross-compiled libsettings_app.so into the nimexamples flavor's jniLibs/arm64-v8a."
+    dependsOn(buildNimSettingsApp)
+    from("${rootProject.projectDir}/nimcache/settings-android") { include("libsettings_app.so") }
+    into(nimTaskAppJniLibsDir)
+}
+
 tasks.matching {
     it.name.startsWith("merge") && it.name.contains("NimexamplesDebugJniLibFolders")
-}.configureEach { dependsOn(stageNimTaskAppJniLib) }
+}.configureEach {
+    dependsOn(stageNimTaskAppJniLib)
+    dependsOn(stageNimSettingsAppJniLib)
+}
 
 tasks.matching {
     it.name.startsWith("merge") && it.name.contains("Nimexamples") && it.name.endsWith("JniLibFolders")
-}.configureEach { dependsOn(stageNimTaskAppJniLib) }
+}.configureEach {
+    dependsOn(stageNimTaskAppJniLib)
+    dependsOn(stageNimSettingsAppJniLib)
+}
 
-// Belt-and-braces: ensure the .so is staged before any pre-build step
-// of the nimexamples flavor regardless of how Gradle names the merge
-// task across versions.
+// Belt-and-braces: ensure both .so files are staged before any
+// pre-build step of the nimexamples flavor regardless of how Gradle
+// names the merge task across versions.
 afterEvaluate {
     tasks.matching { it.name.startsWith("preNimexamples") && it.name.endsWith("Build") }
-        .configureEach { dependsOn(stageNimTaskAppJniLib) }
+        .configureEach {
+            dependsOn(stageNimTaskAppJniLib)
+            dependsOn(stageNimSettingsAppJniLib)
+        }
 }

@@ -85,8 +85,26 @@ class MainActivity : AppCompatActivity() {
     /** Handle of the `<ul class="task-list">` node, looked up via attrs. */
     private var listHandle: Long = 0
 
+    /**
+     * EX-M22: which demo this Activity instance is hosting. Set from
+     * the launch Intent's `demo` string extra (default "tasks" to
+     * preserve EX-M6 behavior when the extra is absent).
+     *
+     *   - `"tasks"`    (or anything else, or absent) → task_app via
+     *                  `libtask_app.so` and the [TaskAppBridge] JNI
+     *                  namespace. This is the EX-M6 path.
+     *   - `"settings"` → settings_app via `libsettings_app.so` and the
+     *                  [SettingsAppBridge] JNI namespace (EX-M22).
+     */
+    private var demoMode: String = "tasks"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // EX-M22: read the demo selector from the launch Intent before
+        // any UI plumbing. When the extra is missing we keep the
+        // EX-M6 default ("tasks") so existing callers see no change.
+        demoMode = intent?.getStringExtra("demo")?.takeIf { it.isNotEmpty() }
+            ?: "tasks"
 
         // For the EX-M6 instrumented test the device may be sitting on
         // the keyguard PIN screen. `setShowWhenLocked(true)` + the
@@ -112,7 +130,10 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(0xFFF8FAFC.toInt())
         }
         val titleBar = TextView(this).apply {
-            text = "task_app — Nim/Android (EX-M6)"
+            text = when (demoMode) {
+                "settings" -> "settings_app — Nim/Android (EX-M22)"
+                else -> "task_app — Nim/Android (EX-M6)"
+            }
             textSize = 18f
             setTextColor(0xFF0F172A.toInt())
             setPadding(dp(16), dp(40), dp(16), dp(8))
@@ -153,9 +174,15 @@ class MainActivity : AppCompatActivity() {
 
         val count = if (initial || !rebuiltOnce) {
             rebuiltOnce = true
-            TaskAppBridge.buildTaskAppUI()
+            when (demoMode) {
+                "settings" -> SettingsAppBridge.buildSettingsAppUI()
+                else -> TaskAppBridge.buildTaskAppUI()
+            }
         } else {
-            TaskAppBridge.rebuildTaskAppUI()
+            when (demoMode) {
+                "settings" -> SettingsAppBridge.rebuildSettingsAppUI()
+                else -> TaskAppBridge.rebuildTaskAppUI()
+            }
         }
         executeCommands(count)
 
@@ -205,32 +232,89 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    // ----- EX-M22: per-demo command-buffer reader delegation -----
+    //
+    // The settings_app and task_app each export their own JNI
+    // namespace (`SettingsAppBridge_*` vs. `TaskAppBridge_*`); both
+    // serialise their command buffers with identical shapes (the
+    // `isonim_android/command_buffer` module is shared between the
+    // two libs). These thin readers dispatch to the right namespace
+    // based on `demoMode`, preserving the EX-M6 task_app path
+    // byte-for-byte when the Intent extra is absent.
+
+    private fun cmdKind(i: Int): String = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandKind(i)
+        else -> TaskAppBridge.getCommandKind(i)
+    }
+    private fun cmdHandle(i: Int): Long = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandHandle(i)
+        else -> TaskAppBridge.getCommandHandle(i)
+    }
+    private fun cmdTag(i: Int): String = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandTag(i)
+        else -> TaskAppBridge.getCommandTag(i)
+    }
+    private fun cmdName(i: Int): String = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandName(i)
+        else -> TaskAppBridge.getCommandName(i)
+    }
+    private fun cmdValue(i: Int): String = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandValue(i)
+        else -> TaskAppBridge.getCommandValue(i)
+    }
+    private fun cmdParent(i: Int): Long = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandParentHandle(i)
+        else -> TaskAppBridge.getCommandParentHandle(i)
+    }
+    private fun cmdChild(i: Int): Long = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandChildHandle(i)
+        else -> TaskAppBridge.getCommandChildHandle(i)
+    }
+    private fun cmdRef(i: Int): Long = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandRefHandle(i)
+        else -> TaskAppBridge.getCommandRefHandle(i)
+    }
+    private fun cmdEvent(i: Int): String = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandEvent(i)
+        else -> TaskAppBridge.getCommandEvent(i)
+    }
+    private fun cmdCallback(i: Int): Int = when (demoMode) {
+        "settings" -> SettingsAppBridge.getCommandCallbackId(i)
+        else -> TaskAppBridge.getCommandCallbackId(i)
+    }
+    private fun handleEvent(callbackId: Int) = when (demoMode) {
+        "settings" -> SettingsAppBridge.handleEvent(callbackId)
+        else -> TaskAppBridge.handleEvent(callbackId)
+    }
+
     /**
      * Walk the Nim command buffer and translate each command into the
      * corresponding Android View operation. Faithful port of the
      * legacy `NimBridge.executeCommandBuffer` for the new JNI
      * namespace, trimmed to the subset the canonical `task_app`
-     * actually emits.
+     * actually emits. EX-M22 generalises the reads via the
+     * `cmd*` delegators so the settings_app's command stream lands
+     * in the same translator without duplicating the body.
      */
     private fun executeCommands(count: Int) {
         for (i in 0 until count) {
-            val kind = TaskAppBridge.getCommandKind(i)
+            val kind = cmdKind(i)
             when (kind) {
                 "createView" -> {
-                    val nimHandle = TaskAppBridge.getCommandHandle(i)
-                    val tag = TaskAppBridge.getCommandTag(i)
+                    val nimHandle = cmdHandle(i)
+                    val tag = cmdTag(i)
                     val v = createView(tag)
                     views[nimHandle] = v
                     if (rootHandle == 0L) rootHandle = nimHandle
                 }
                 "createScrollView" -> {
-                    val nimHandle = TaskAppBridge.getCommandHandle(i)
+                    val nimHandle = cmdHandle(i)
                     val v = android.widget.ScrollView(this)
                     views[nimHandle] = v
                     if (rootHandle == 0L) rootHandle = nimHandle
                 }
                 "createRecyclerView" -> {
-                    val nimHandle = TaskAppBridge.getCommandHandle(i)
+                    val nimHandle = cmdHandle(i)
                     val v = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL
                     }
@@ -238,14 +322,14 @@ class MainActivity : AppCompatActivity() {
                     if (rootHandle == 0L) rootHandle = nimHandle
                 }
                 "setText" -> {
-                    val nimHandle = TaskAppBridge.getCommandHandle(i)
-                    val value = TaskAppBridge.getCommandValue(i)
+                    val nimHandle = cmdHandle(i)
+                    val value = cmdValue(i)
                     val v = views[nimHandle] ?: continue
                     if (v is TextView) v.text = value
                 }
                 "appendChild" -> {
-                    val pH = TaskAppBridge.getCommandParentHandle(i)
-                    val cH = TaskAppBridge.getCommandChildHandle(i)
+                    val pH = cmdParent(i)
+                    val cH = cmdChild(i)
                     val parent = views[pH] as? ViewGroup ?: continue
                     val child = views[cH] ?: continue
                     (child.parent as? ViewGroup)?.removeView(child)
@@ -253,17 +337,17 @@ class MainActivity : AppCompatActivity() {
                     childOrder.getOrPut(pH) { mutableListOf() }.add(cH)
                 }
                 "removeChild" -> {
-                    val pH = TaskAppBridge.getCommandParentHandle(i)
-                    val cH = TaskAppBridge.getCommandChildHandle(i)
+                    val pH = cmdParent(i)
+                    val cH = cmdChild(i)
                     val parent = views[pH] as? ViewGroup ?: continue
                     val child = views[cH] ?: continue
                     parent.removeView(child)
                     childOrder[pH]?.remove(cH)
                 }
                 "insertBefore" -> {
-                    val pH = TaskAppBridge.getCommandParentHandle(i)
-                    val cH = TaskAppBridge.getCommandChildHandle(i)
-                    val rH = TaskAppBridge.getCommandRefHandle(i)
+                    val pH = cmdParent(i)
+                    val cH = cmdChild(i)
+                    val rH = cmdRef(i)
                     val parent = views[pH] as? ViewGroup ?: continue
                     val child = views[cH] ?: continue
                     val ref = views[rH] ?: continue
@@ -273,9 +357,9 @@ class MainActivity : AppCompatActivity() {
                     childOrder.getOrPut(pH) { mutableListOf() }.add(cH)
                 }
                 "setAttribute" -> {
-                    val nimHandle = TaskAppBridge.getCommandHandle(i)
-                    val name = TaskAppBridge.getCommandName(i)
-                    val value = TaskAppBridge.getCommandValue(i)
+                    val nimHandle = cmdHandle(i)
+                    val name = cmdName(i)
+                    val value = cmdValue(i)
                     attrs.getOrPut(nimHandle) { mutableMapOf() }[name] = value
                     val v = views[nimHandle] ?: continue
                     when (name) {
@@ -305,9 +389,9 @@ class MainActivity : AppCompatActivity() {
                     // so we accept and ignore for now.
                 }
                 "setEventListener" -> {
-                    val nimHandle = TaskAppBridge.getCommandHandle(i)
-                    val event = TaskAppBridge.getCommandEvent(i)
-                    val callbackId = TaskAppBridge.getCommandCallbackId(i)
+                    val nimHandle = cmdHandle(i)
+                    val event = cmdEvent(i)
+                    val callbackId = cmdCallback(i)
                     val v = views[nimHandle] ?: continue
                     when (event) {
                         "click" -> v.setOnClickListener {
@@ -334,13 +418,17 @@ class MainActivity : AppCompatActivity() {
     private fun onNimEvent(callbackId: Int) {
         // Sync the EditText's current text into the VM first. We do
         // this unconditionally on every click; if the click was on a
-        // non-Add view, it's a harmless no-op because the leaves'
-        // toggle/remove/filter handlers don't read `inputText`.
-        val input = findInputEditText()
-        if (input != null) {
-            TaskAppBridge.setInputText(input.text.toString())
+        // non-Add view, it's a harmless no-op because the task_app's
+        // toggle/remove/filter handlers don't read `inputText`. The
+        // settings_app demo has no EditText widgets, so we skip the
+        // sync entirely there.
+        if (demoMode != "settings") {
+            val input = findInputEditText()
+            if (input != null) {
+                TaskAppBridge.setInputText(input.text.toString())
+            }
         }
-        TaskAppBridge.handleEvent(callbackId)
+        handleEvent(callbackId)
         rebuildTree()
     }
 
@@ -358,12 +446,133 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * EX-M22: Second-pass descriptors for the settings_app demo. The
+     * settings_app emits a different view tree shape than the task_app
+     * (bottom-sheet drawer: header rows in a scrollable list + a single
+     * bottom-sheet pane with the active group's items). The Espresso
+     * test surface needs deterministic descriptors keyed by group_id /
+     * item_id rather than the index-based scheme used for task rows.
+     *
+     * Tags (all settings descriptors use the `settings_` prefix to
+     * avoid colliding with task_row_*, toggle_*, etc.):
+     *
+     *   - `settings_root` — the `data-app="settings-app"` root.
+     *   - `settings_sheet_list` — the scrollable list of group rows.
+     *   - `settings_sheet_row_<group_id>` — clickable group row.
+     *   - `settings_sheet_header_<group_id>` — the group's `<header>`
+     *     (the actual click target — clicking it activates the group).
+     *   - `settings_bottom_sheet` — the bottom-sheet pane.
+     *   - `settings_toggle_<item_id>` — toggle (checkbox) leaf.
+     *   - `settings_number_<item_id>` — number input host.
+     *   - `settings_choice_<item_id>` — choice select host.
+     *
+     * Item IDs are the catalog ids ("appearance.dark_mode" etc.) —
+     * which the leaves stash on the value-bearing leaves via the
+     * implicit `data-*` attributes (the toggle/number/choice host
+     * carries the `id`? No — actually the per-kind component templates
+     * do not pass the item id through as a data-* attribute. We walk
+     * the bottom-sheet's children in order and pair each item to the
+     * catalog's items by visible label, mirroring how the parity
+     * driver scopes lookups.) For the Espresso test, locating an
+     * item by visible label is the cleanest path because the visible
+     * label IS what an end-user would target.
+     */
+    private fun assignSettingsDescriptors() {
+        // 1. The root.
+        for ((h, v) in views) {
+            if (attrs[h]?.get("data-app") == "settings-app") {
+                v.contentDescription = "settings_root"
+            }
+            if (attrs[h]?.get("class") == "settings-sheet-list") {
+                v.contentDescription = "settings_sheet_list"
+            }
+            if (attrs[h]?.get("class") == "settings-bottom-sheet") {
+                v.contentDescription = "settings_bottom_sheet"
+            }
+        }
+        // 2. Per-group sheet rows + their header click targets.
+        for ((h, v) in views) {
+            val sheetId = attrs[h]?.get("data-sheet-id") ?: continue
+            val cls = attrs[h]?.get("class") ?: ""
+            if (cls.startsWith("settings-sheet-row")) {
+                v.contentDescription = "settings_sheet_row_$sheetId"
+            }
+        }
+        for ((h, v) in views) {
+            val groupId = attrs[h]?.get("data-group-id") ?: continue
+            if (attrs[h]?.get("class") == "settings-group-header") {
+                v.contentDescription = "settings_sheet_header_$groupId"
+            }
+        }
+        // 3. Item-row descriptors. The bottom-sheet pane's children
+        //    are <div class="settings-item">. Each item-row's first
+        //    child is the label (a <label class="settings-label">);
+        //    the last child is the value-bearing leaf (checkbox /
+        //    number host / choice host). We key descriptors by the
+        //    visible label text — that's the surface the Espresso
+        //    test can reasonably depend on.
+        val sheetHandle = views.keys.firstOrNull {
+            attrs[it]?.get("class") == "settings-bottom-sheet"
+        } ?: return
+        val itemRowHandles = childOrder[sheetHandle] ?: emptyList()
+        for (rowH in itemRowHandles) {
+            val rowChildren = childOrder[rowH] ?: continue
+            if (rowChildren.isEmpty()) continue
+            val labelH = rowChildren[0]
+            val labelView = views[labelH] as? TextView ?: continue
+            val labelText = labelView.text?.toString() ?: continue
+            // Slug-friendly: lowercase + spaces to underscores.
+            val slug = labelText.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+            // The last child is the value-bearing leaf. We descend
+            // into it for toggle (checkbox itself) / number (the
+            // inner <input type="number">) / choice (the inner
+            // <select>) so the Espresso test can target the actual
+            // clickable / data-bearing element.
+            val leafH = rowChildren.last()
+            val leafView = views[leafH] ?: continue
+            val leafClass = attrs[leafH]?.get("class") ?: ""
+            val leafType = attrs[leafH]?.get("type") ?: ""
+            when {
+                leafType == "checkbox" -> {
+                    leafView.contentDescription = "settings_toggle_$slug"
+                }
+                leafClass == "settings-number" -> {
+                    leafView.contentDescription = "settings_number_$slug"
+                    // Annotate the inner <input> too.
+                    val innerChildren = childOrder[leafH] ?: emptyList()
+                    for (innerH in innerChildren) {
+                        if (attrs[innerH]?.get("type") == "number") {
+                            views[innerH]?.contentDescription =
+                                "settings_number_input_$slug"
+                        }
+                    }
+                }
+                leafClass == "settings-choice" -> {
+                    leafView.contentDescription = "settings_choice_$slug"
+                    // Annotate the inner <select> (empty-class child).
+                    val innerChildren = childOrder[leafH] ?: emptyList()
+                    for (innerH in innerChildren) {
+                        if ((attrs[innerH]?.get("class") ?: "") == "") {
+                            views[innerH]?.contentDescription =
+                                "settings_choice_select_$slug"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Second pass: assign stable Espresso descriptors to every
      * interactive view, derived from attrs the leaves attached
      * (`data-filter`, `class`, `placeholder`, ...) and from the final
      * child order under the list node.
      */
     private fun assignStableDescriptors() {
+        if (demoMode == "settings") {
+            assignSettingsDescriptors()
+            return
+        }
         // 1. The text input. The leaves emit `placeholder="New task..."`.
         for ((h, v) in views) {
             if (v is EditText && attrs[h]?.get("placeholder") == "New task...") {
@@ -470,10 +679,43 @@ class MainActivity : AppCompatActivity() {
             "Button" -> Button(ctx).apply { isAllCaps = false }
             "EditText" -> EditText(ctx).apply {
                 setSingleLine()
-                hint = "New task..."
+                // EX-M6 task_app input ships an explicit
+                // placeholder="New task..." attribute via the leaves;
+                // the renderer-method translates that to
+                // `EditText.hint`. The default hint is empty so
+                // settings_app's `<input type="number">` (which sets
+                // no placeholder) doesn't inherit the task_app hint
+                // cosmetically.
+                hint = ""
                 setPadding(dp(12), dp(8), dp(12), dp(8))
             }
-            else -> LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+            // EX-M22: <select> maps to Spinner via the Android
+            // renderer's tag table. For the EX-M22 settings_app demo
+            // we don't need a real Spinner widget (the VM is the
+            // source of truth for the active choice); a plain
+            // LinearLayout with a visible minHeight is enough to make
+            // the choice host pass Espresso's `isDisplayed()`. The
+            // descriptor scan also walks the choice host's
+            // <option> children, but since options map to FrameLayout
+            // (= LinearLayout) which is not a TextView, their text
+            // content stays invisible. The parity test exercises
+            // selection through `setAttribute("data-value", ...)` +
+            // `fireEvent("click", ...)` directly on the select node,
+            // not via real Spinner interaction.
+            "Spinner" -> LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                minimumHeight = dp(24)
+            }
+            else -> LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                // EX-M22: ensure the fallback widget has visible
+                // bounds so Espresso `isDisplayed()` matches when
+                // descriptors are assigned to the host. Without this,
+                // empty/un-mapped widgets render with 0 height and
+                // become invisible to UI tests even though they
+                // exist in the tree.
+                minimumHeight = dp(8)
+            }
         }
     }
 

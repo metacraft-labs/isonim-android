@@ -135,6 +135,45 @@ demo-build-android:
       ../isonim-examples/task_app/main_android.nim
     file nimcache/demo-android/libtask_app.so
 
+# EX-M22: cross-compile the settings_app demo as an Android .so library
+# (arm64-v8a) using `-d:androidGui`. Mirrors `demo-build-android` for
+# the task_app but emits `libsettings_app.so` carrying
+# `Java_com_metacraft_isonim_examples_SettingsAppBridge_*` JNI symbols.
+# Pairs with RS-M6 for the streaming/screencap surface.
+#
+# Architecture note: shipped as a SECOND shared library alongside
+# `libtask_app.so` so the EX-M6 task_app surface stays byte-untouched
+# (variant B in the EX-M22 architectural notes). Both libs coexist in
+# the same Android process; the Kotlin shells route to whichever one
+# matches the active demo Intent extra.
+demo-build-android-settings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    NDK_CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android34-clang"
+    mkdir -p nimcache/settings-android
+    nim c \
+      --os:android --cpu:arm64 \
+      --cc:clang \
+      --clang.exe:"$NDK_CC" \
+      --clang.linkerexe:"$NDK_CC" \
+      --passC:-fPIC \
+      --passL:"-shared -llog -nostdlib++ -lc++_static -lc++abi" \
+      --app:lib \
+      --noMain \
+      --mm:orc \
+      -d:android -d:commandBuffer -d:androidGui \
+      --path:../isonim/src \
+      --path:../isonim-examples \
+      --path:../isonim-render-serve/src \
+      --path:nim-lib/src \
+      --path:../nim-everywhere/src \
+      --path:../nim-faststreams \
+      --path:../nim-stew \
+      --nimcache:nimcache/settings-android \
+      -o:nimcache/settings-android/libsettings_app.so \
+      ../isonim-examples/settings_app/main_android_entry.nim
+    file nimcache/settings-android/libsettings_app.so
+
 # EX-M6: deploy the nimexamples Layer-4 product flavor (the
 # isonim-examples task_app composition root) to a connected device and
 # launch it. The Gradle assemble step auto-invokes `demo-build-android`
