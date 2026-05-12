@@ -177,9 +177,33 @@ class MainActivity : AppCompatActivity() {
         // the list node, which is only fully known once all
         // `appendChild` commands have executed.
         assignStableDescriptors()
+
+        android.util.Log.d("RS-M6-Capture", "rebuildTree complete: " +
+            "views.size=${views.size} rootHandle=$rootHandle " +
+            "contentContainerChildren=${contentContainer.childCount}")
+        // RS-M6: publish the materialised root to the capture helper so
+        // `TaskAppBridge.captureRootViewToRgba` (called from Espresso
+        // tests via the Nim adapter) can drive `View.draw(Canvas)`
+        // against the live view tree. We expose `contentContainer`
+        // rather than `root` directly because the test deliberately
+        // requests capture dimensions that may not match the natural
+        // size of the inner Nim tree; capturing the container lets
+        // the helper re-measure / re-layout it to the requested size
+        // without disturbing the rest of the activity chrome (title
+        // bar etc.).
+        CaptureHelper.activeRootView = contentContainer
     }
 
     private var rebuiltOnce = false
+
+    override fun onDestroy() {
+        // RS-M6: drop the capture-helper's reference so the View tree
+        // isn't kept alive past the activity's lifecycle.
+        if (CaptureHelper.activeRootView === contentContainer) {
+            CaptureHelper.activeRootView = null
+        }
+        super.onDestroy()
+    }
 
     /**
      * Walk the Nim command buffer and translate each command into the

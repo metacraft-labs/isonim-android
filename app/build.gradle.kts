@@ -135,7 +135,14 @@ val buildNimTaskApp by tasks.registering(Exec::class) {
     // app actually touches.
     inputs.files(
         fileTree("${rootProject.projectDir}/../isonim-examples/task_app") { include("**/*.nim") },
-        fileTree("${rootProject.projectDir}/nim-lib/src/isonim_android") { include("**/*.nim") }
+        fileTree("${rootProject.projectDir}/nim-lib/src/isonim_android") { include("**/*.nim") },
+        // RS-M6: the canonical `task_app` Nim shared library now also
+        // depends on `isonim_render_serve/adapters/android_adapter.nim`
+        // and the surrounding packet/frame_source surface (the JNI
+        // export `Java_*_TaskAppBridge_captureRootViewToRgba` drives
+        // the adapter's `renderFrame`). Track those sources so the
+        // .so rebuilds when the adapter or capture path changes.
+        fileTree("${rootProject.projectDir}/../isonim-render-serve/src") { include("**/*.nim") }
     )
 }
 

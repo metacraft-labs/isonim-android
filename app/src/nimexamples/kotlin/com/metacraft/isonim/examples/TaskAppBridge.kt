@@ -40,4 +40,32 @@ object TaskAppBridge {
 
     @JvmStatic external fun handleEvent(callbackId: Int)
     @JvmStatic external fun setInputText(text: String)
+
+    /**
+     * RS-M6 Android adapter capture entry point.
+     *
+     * Drives the Nim adapter's `renderFrame` against the currently
+     * displayed task_app tree (published to
+     * `CaptureHelper.activeRootView` by `MainActivity.rebuildTree`)
+     * and returns the rendered pixels as canonical RGBA8888 row-major
+     * bytes. Length is exactly `width * height * 4`. Empty array
+     * indicates capture failure (no active root, JNI error,
+     * out-of-bounds dimensions).
+     *
+     * The Nim implementation lives in
+     * `isonim-examples/task_app/main_android.nim`'s `-d:androidGui`
+     * block; it calls back into `CaptureHelper.captureActiveRootToRgba`
+     * via JNI to do the actual `Bitmap.createBitmap` /
+     * `Canvas(bitmap)` / `view.draw(canvas)` /
+     * `bitmap.getPixels` / ARGB->RGBA swizzle. This round-trip
+     * (Kotlin -> JNI -> Nim adapter -> JNI -> Kotlin helper) is
+     * deliberate: it exercises the same Nim adapter code-path the
+     * IsoNim render-stream bridge will use when streaming a real
+     * device-rendered task_app to a remote browser canvas.
+     *
+     * Acceptance test:
+     *   app/src/androidTest/kotlin/com/metacraft/isonim/examples/
+     *   AdapterCaptureTest.kt
+     */
+    @JvmStatic external fun captureRootViewToRgba(width: Int, height: Int): ByteArray
 }

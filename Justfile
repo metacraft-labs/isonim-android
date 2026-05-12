@@ -125,6 +125,7 @@ demo-build-android:
       -d:android -d:commandBuffer -d:androidGui \
       --path:../isonim/src \
       --path:../isonim-examples \
+      --path:../isonim-render-serve/src \
       --path:nim-lib/src \
       --path:../nim-everywhere/src \
       --path:../nim-faststreams \
