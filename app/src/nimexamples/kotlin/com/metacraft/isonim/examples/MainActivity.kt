@@ -1,9 +1,12 @@
 package com.metacraft.isonim.examples
 
 import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -335,6 +338,25 @@ class MainActivity : AppCompatActivity() {
                     (child.parent as? ViewGroup)?.removeView(child)
                     parent.addView(child)
                     childOrder.getOrPut(pH) { mutableListOf() }.add(cH)
+                    // M-EVP-14 round 2: apply any pending flex-grow
+                    // weight now that the parent's orientation is
+                    // known.
+                    flexGrowWeights[cH]?.let { applyFlexGrow(child, it) }
+                    // M-EVP-14 round 2: respect parent's `gap` setStyle
+                    // for any subsequent siblings. The first child gets
+                    // no leading gap.
+                    val gap = gapValues[pH]
+                    if (gap != null && parent.childCount > 1) {
+                        val lp = child.layoutParams as? ViewGroup.MarginLayoutParams
+                        if (lp != null) {
+                            val gapPx = dp(gap)
+                            val isHorizontal = parent is LinearLayout &&
+                                parent.orientation == LinearLayout.HORIZONTAL
+                            if (isHorizontal) lp.leftMargin = gapPx
+                            else lp.topMargin = gapPx
+                            child.layoutParams = lp
+                        }
+                    }
                 }
                 "removeChild" -> {
                     val pH = cmdParent(i)
@@ -384,9 +406,19 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 "setStyle" -> {
-                    // The `task_app` leaves don't currently emit
-                    // style commands — they ship classnames only —
-                    // so we accept and ignore for now.
+                    // M-EVP-14 round 2: the `task_app` Android leaves
+                    // now ship Material 3 style hints (filter chip
+                    // fills, Add Task height, primary CTA color) via
+                    // `setStyle` commands. The Nim-side AndroidRenderer
+                    // maps the CSS keys to Android-style names before
+                    // emitting (`background-color` -> `backgroundColor`,
+                    // `flex-direction` -> `orientation`, etc.), so this
+                    // dispatch keys on the Android-side names directly.
+                    val nimHandle = cmdHandle(i)
+                    val prop = cmdName(i)
+                    val value = cmdValue(i)
+                    val v = views[nimHandle] ?: continue
+                    applyStyle(nimHandle, v, prop, value)
                 }
                 "setEventListener" -> {
                     val nimHandle = cmdHandle(i)
@@ -721,6 +753,154 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(v: Int): Int =
         (v * resources.displayMetrics.density).toInt()
+
+    /**
+     * Per-view background drawable cache. We use a single
+     * `GradientDrawable` per view so a `backgroundColor` setStyle and
+     * a `cornerRadius` setStyle both target the same drawable
+     * (otherwise the later call would clobber the earlier one).
+     */
+    private val bgDrawables = mutableMapOf<Long, GradientDrawable>()
+
+    private fun getOrCreateBgDrawable(handle: Long, view: View): GradientDrawable {
+        bgDrawables[handle]?.let { return it }
+        val gd = GradientDrawable()
+        bgDrawables[handle] = gd
+        view.background = gd
+        return gd
+    }
+
+    /**
+     * M-EVP-14 round 2: dispatch setStyle commands emitted by the Nim
+     * leaves. The Nim-side `isonim_android/renderer` already maps
+     * CSS-style props to Android-style names (`background-color` →
+     * `backgroundColor`, `flex-direction` → `orientation`,
+     * `font-size` → `textSize`, `color` → `textColor`,
+     * `border-radius` → `cornerRadius`), so this handler keys on the
+     * Android-style names. The value column carries pre-translated
+     * values too (e.g. `HORIZONTAL` not `row`).
+     */
+    private fun applyStyle(handle: Long, view: View, prop: String, value: String) {
+        when (prop) {
+            "backgroundColor" -> {
+                try {
+                    val color = Color.parseColor(value)
+                    val bg = getOrCreateBgDrawable(handle, view)
+                    bg.setColor(color)
+                } catch (_: Exception) {}
+            }
+            "textColor" -> {
+                try {
+                    val color = Color.parseColor(value)
+                    if (view is TextView) view.setTextColor(color)
+                } catch (_: Exception) {}
+            }
+            "cornerRadius" -> {
+                val v = value.toFloatOrNull() ?: return
+                val bg = getOrCreateBgDrawable(handle, view)
+                bg.cornerRadius = dp(v.toInt()).toFloat()
+            }
+            "textSize" -> {
+                val sp = value.toFloatOrNull() ?: return
+                if (view is TextView) view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+            }
+            "orientation" -> {
+                val orient = if (value == "HORIZONTAL")
+                    LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+                if (view is LinearLayout) view.orientation = orient
+            }
+            "height" -> {
+                val px = value.toIntOrNull()?.let { dp(it) } ?: return
+                val lp = view.layoutParams ?: ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.height = px
+                view.layoutParams = lp
+                if (view is TextView) view.gravity = Gravity.CENTER
+            }
+            "width" -> {
+                val px = value.toIntOrNull()?.let { dp(it) } ?: return
+                val lp = view.layoutParams ?: ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.width = px
+                view.layoutParams = lp
+            }
+            "padding" -> {
+                val px = value.toIntOrNull()?.let { dp(it) } ?: return
+                view.setPadding(px, px, px, px)
+            }
+            "gap" -> {
+                gapValues[handle] = value.toIntOrNull() ?: return
+                // Re-apply margins to already-attached children if any.
+                if (view is ViewGroup) {
+                    val gapPx = dp(gapValues[handle]!!)
+                    val isHorizontal = view is LinearLayout &&
+                        view.orientation == LinearLayout.HORIZONTAL
+                    for (idx in 1 until view.childCount) {
+                        val child = view.getChildAt(idx)
+                        val lp = child.layoutParams as? ViewGroup.MarginLayoutParams
+                            ?: continue
+                        if (isHorizontal) lp.leftMargin = gapPx
+                        else lp.topMargin = gapPx
+                        child.layoutParams = lp
+                    }
+                }
+            }
+            "flex-grow" -> {
+                // Defer to appendChild: the child may not yet be
+                // attached to its parent when `setStyle "flex-grow"`
+                // arrives (the leaves call `setStyle` before
+                // `appendChild`). We record the weight and apply it
+                // in the appendChild handler once we know the parent
+                // orientation. If the view is already attached, also
+                // re-apply now so reactive updates work.
+                val weight = value.toFloatOrNull() ?: return
+                flexGrowWeights[handle] = weight
+                applyFlexGrow(view, weight)
+            }
+        }
+    }
+
+    /** Per-view gap (dp) — applied as margin between siblings when laid out. */
+    private val gapValues = mutableMapOf<Long, Int>()
+
+    /**
+     * Per-view flex-grow weight, recorded by `setStyle "flex-grow"` so
+     * `appendChild` can promote the child's layoutParams to
+     * `LinearLayout.LayoutParams` with the right `weight` + a zeroed
+     * main-axis dimension. We need this two-phase because the leaves
+     * emit `setStyle` *before* `appendChild`, so the parent's
+     * orientation isn't known yet when the weight is first seen.
+     */
+    private val flexGrowWeights = mutableMapOf<Long, Float>()
+
+    private fun applyFlexGrow(view: View, weight: Float) {
+        val parent = view.parent as? LinearLayout ?: return
+        val existing = view.layoutParams
+        val isHorizontal = parent.orientation == LinearLayout.HORIZONTAL
+        val newLp = if (existing is LinearLayout.LayoutParams) {
+            existing.weight = weight
+            if (isHorizontal) existing.width = 0
+            else existing.height = 0
+            existing
+        } else {
+            val width = if (isHorizontal) 0
+                else (existing?.width ?: ViewGroup.LayoutParams.MATCH_PARENT)
+            val height = if (isHorizontal)
+                (existing?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT)
+                else 0
+            LinearLayout.LayoutParams(width, height, weight).also { lp ->
+                if (existing is ViewGroup.MarginLayoutParams) {
+                    lp.setMargins(existing.leftMargin, existing.topMargin,
+                                   existing.rightMargin, existing.bottomMargin)
+                }
+            }
+        }
+        view.layoutParams = newLp
+    }
 
     companion object {
         private val SUPPRESS_WATCHER = Any()
