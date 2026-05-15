@@ -131,8 +131,8 @@ class MainActivity : AppCompatActivity() {
         }
         val titleBar = TextView(this).apply {
             text = when (demoMode) {
-                "settings" -> "settings_app — Nim/Android (EX-M22)"
-                else -> "task_app — Nim/Android (EX-M6)"
+                "settings" -> "settings_app"
+                else -> "task_app"
             }
             textSize = 18f
             setTextColor(0xFF0F172A.toInt())
