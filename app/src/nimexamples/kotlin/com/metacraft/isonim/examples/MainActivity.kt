@@ -128,20 +128,18 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        // Round-3 fix: drop the debug title bar entirely (the
+        // reviewer flagged the `task_app` / `settings_app` heading
+        // as dev chrome that has no place on the demo surface). The
+        // outer container also moves to the dark Material 3 surface
+        // tone the leaves now style their cards against, and
+        // contributes the top status-bar padding the title bar used
+        // to provide.
         val outer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFFF8FAFC.toInt())
+            setBackgroundColor(0xFF111118.toInt())
+            setPadding(dp(12), dp(40), dp(12), dp(12))
         }
-        val titleBar = TextView(this).apply {
-            text = when (demoMode) {
-                "settings" -> "settings_app"
-                else -> "task_app"
-            }
-            textSize = 18f
-            setTextColor(0xFF0F172A.toInt())
-            setPadding(dp(16), dp(40), dp(16), dp(8))
-        }
-        outer.addView(titleBar)
 
         contentContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -697,13 +695,42 @@ class MainActivity : AppCompatActivity() {
             "LinearLayout" -> LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
             "TextView" -> TextView(ctx).apply {
                 setPadding(dp(8), dp(4), dp(8), dp(4))
-                setTextColor(0xFF0F172A.toInt())
+                // Round-3 fix: the activity's outer surface is now
+                // dark (`#111118` on the surface card neutral). The
+                // default TextView text color tracks that, so any
+                // leaf that doesn't `setStyle(color, …)` explicitly
+                // (e.g. the bottom-sheet group marker chevron in
+                // `settings_app/android/shell.nim`) still renders
+                // legibly on the new background.
+                setTextColor(0xFFE6E6F0.toInt())
             }
             "MaterialButton" -> try {
                 MaterialButton(ctx).apply {
                     isAllCaps = false
-                    minHeight = dp(40)
-                    minWidth = dp(48)
+                    // Round-3 fix: drop the legacy 40 dp minHeight /
+                    // 48 dp minWidth so per-leaf `setStyle("height",
+                    // "32")` / `setStyle("width", "40")` calls (the
+                    // M3 switch track / chip / circular stepper
+                    // metrics in the round-3 leaves) actually take
+                    // effect. The leaves now own their own size
+                    // explicitly; no need for a one-size-fits-all
+                    // floor here.
+                    minHeight = 0
+                    minWidth = 0
+                    insetTop = 0
+                    insetBottom = 0
+                    // Round-3 fix: default `MaterialButton`
+                    // backgroundTint to transparent. Leaves that are
+                    // primary CTAs (Add Task) / active filter chips /
+                    // active settings choice chips paint themselves
+                    // indigo via `setStyle("background-color", …)`;
+                    // every other button (per-row toggle, remove,
+                    // inactive filter chip) inherited the M3 indigo
+                    // tint by default and washed the round-3
+                    // reviewer's screen.
+                    backgroundTintList =
+                        android.content.res.ColorStateList.valueOf(
+                            Color.TRANSPARENT)
                 }
             } catch (_: Exception) {
                 Button(ctx).apply { isAllCaps = false }
@@ -720,6 +747,12 @@ class MainActivity : AppCompatActivity() {
                 // cosmetically.
                 hint = ""
                 setPadding(dp(12), dp(8), dp(12), dp(8))
+                // Round-3 fix: the activity surface is now dark, so
+                // give EditText explicit on-surface text + hint
+                // colours instead of the system-default near-black
+                // that was nearly invisible on the new background.
+                setTextColor(0xFFE6E6F0.toInt())
+                setHintTextColor(0xFFA0A0B8.toInt())
             }
             // EX-M22: <select> maps to Spinner via the Android
             // renderer's tag table. For the EX-M22 settings_app demo
@@ -785,8 +818,29 @@ class MainActivity : AppCompatActivity() {
             "backgroundColor" -> {
                 try {
                     val color = Color.parseColor(value)
-                    val bg = getOrCreateBgDrawable(handle, view)
-                    bg.setColor(color)
+                    // Round-3 fix: `MaterialButton` uses
+                    // `backgroundTint` rather than the `background`
+                    // drawable for its fill colour. Setting
+                    // `view.background = gd` (as we do for plain
+                    // Views) is silently overridden by the M3 button's
+                    // tint, which is why the round-3 reviewer saw
+                    // every styled button render as the M3 default
+                    // indigo regardless of the colour we passed in.
+                    if (view is MaterialButton) {
+                        view.backgroundTintList =
+                            android.content.res.ColorStateList.valueOf(color)
+                        // Track the requested colour so a subsequent
+                        // `cornerRadius` setStyle still has access to
+                        // it via the cached drawable; MaterialButton
+                        // ignores the GradientDrawable for fill, but
+                        // we still consult `bgDrawables[handle]` for
+                        // corner-radius bookkeeping below.
+                        val bg = getOrCreateBgDrawable(handle, view)
+                        bg.setColor(color)
+                    } else {
+                        val bg = getOrCreateBgDrawable(handle, view)
+                        bg.setColor(color)
+                    }
                 } catch (_: Exception) {}
             }
             "textColor" -> {
@@ -797,8 +851,15 @@ class MainActivity : AppCompatActivity() {
             }
             "cornerRadius" -> {
                 val v = value.toFloatOrNull() ?: return
-                val bg = getOrCreateBgDrawable(handle, view)
-                bg.cornerRadius = dp(v.toInt()).toFloat()
+                if (view is MaterialButton) {
+                    // M3 buttons expose a first-class corner-radius
+                    // API; the GradientDrawable path is a no-op for
+                    // them.
+                    view.cornerRadius = dp(v.toInt())
+                } else {
+                    val bg = getOrCreateBgDrawable(handle, view)
+                    bg.cornerRadius = dp(v.toInt()).toFloat()
+                }
             }
             "textSize" -> {
                 val sp = value.toFloatOrNull() ?: return
