@@ -922,6 +922,14 @@ class MainActivity : AppCompatActivity() {
                 flexGrowWeights[handle] = weight
                 applyFlexGrow(view, weight)
             }
+            "elevation" -> {
+                // Round-4 fix: settings_app group surface cards request
+                // a Material 3 elevation hint via `setStyle("elevation",
+                // "4")`.  Android's `View.elevation` API takes pixels;
+                // we convert from the dp value the leaf emits.
+                val dpVal = value.toIntOrNull() ?: return
+                view.elevation = dp(dpVal).toFloat()
+            }
         }
     }
 
