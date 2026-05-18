@@ -702,6 +702,50 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Wave S-4: body-text typeface resolver. Walks a small explicit
+     * fallback chain — Roboto from the device's bundled font path,
+     * then the Android system "Roboto" family, then sans-serif-medium —
+     * to avoid the Samsung One UI Sans (the default sans-serif alias
+     * on Samsung devices) which paints with a decorative/condensed feel
+     * that the M-EVP-14 round-10 reviewer flagged as "faint serifed".
+     * The chain is intentionally narrow: any device that ships Roboto
+     * gets canonical Material rendering; everything else falls through
+     * to sans-serif-medium with letterSpacing reset.
+     */
+    private val bodyTypefaceCache: android.graphics.Typeface by lazy {
+        // Wave S-4: probe a small set of Roboto font files in
+        // ``/system/fonts`` — Samsung devices (One UI) ship Roboto here
+        // even though the ``sans-serif`` alias resolves to the
+        // SamsungOne house family. By going direct via
+        // ``Typeface.createFromFile`` we sidestep the alias entirely and
+        // get canonical Material-style body text. Probe order: Medium,
+        // Regular, then RobotoFlex as a last fallback. Each path that
+        // exists wins; if none exist, fall through to sans-serif-medium.
+        for (name in listOf(
+            "Roboto-Medium.ttf",
+            "Roboto-Regular.ttf",
+            "RobotoStatic-Regular.ttf",
+            "RobotoFlex-Regular.ttf"
+        )) {
+            try {
+                val f = java.io.File("/system/fonts/$name")
+                if (f.exists()) {
+                    return@lazy android.graphics.Typeface.createFromFile(f)
+                }
+            } catch (_: Exception) { /* try next */ }
+        }
+        try {
+            val rb = android.graphics.Typeface.create(
+                "Roboto", android.graphics.Typeface.NORMAL)
+            if (rb != null && rb != android.graphics.Typeface.DEFAULT) {
+                return@lazy rb
+            }
+        } catch (_: Exception) { /* fall through */ }
+        android.graphics.Typeface.create(
+            "sans-serif-medium", android.graphics.Typeface.NORMAL)
+    }
+
+    /**
      * Map a Nim renderer tag (already lowered to an Android
      * widget-class name by `isonim_android/renderer`'s `mapTag`) into
      * a real View instance. Reuses the same `tagMap` codomain the
@@ -738,7 +782,8 @@ class MainActivity : AppCompatActivity() {
                 // exposes a `fontFamily` attribute that can resolve
                 // to a non-Roboto family on some devices) cannot leak
                 // into the Nim-driven view tree.
-                typeface = android.graphics.Typeface.SANS_SERIF
+                typeface = bodyTypefaceCache
+                letterSpacing = 0f
             }
             "MaterialButton" -> try {
                 MaterialButton(ctx).apply {
@@ -770,20 +815,32 @@ class MainActivity : AppCompatActivity() {
                     backgroundTintList =
                         android.content.res.ColorStateList.valueOf(
                             Color.TRANSPARENT)
-                    // Round-10 wave-Q fix: force system sans-serif —
-                    // see the TextView branch for the same rationale.
-                    typeface = android.graphics.Typeface.SANS_SERIF
+                    // Wave S-4: bump from SANS_SERIF (Roboto Regular) to
+                    // an explicit ``sans-serif-medium`` typeface to land
+                    // a heavier-stem body font; the round-10 reviewer
+                    // reported the round-Q `SANS_SERIF` was still reading
+                    // as a faint serifed / condensed style at the editor's
+                    // preview scale. Medium pushes the rendering into the
+                    // ~500-weight band where the strokes look unambiguously
+                    // sans-serif at small sizes. ``letterSpacing = 0f``
+                    // undoes Material's default 0.0125 em letter-spacing
+                    // on button labels (which read as decorative tracking
+                    // at small sizes).
+                    typeface = bodyTypefaceCache
+                    letterSpacing = 0f
                 }
             } catch (_: Exception) {
                 Button(ctx).apply {
                     isAllCaps = false
-                    typeface = android.graphics.Typeface.SANS_SERIF
+                    typeface = bodyTypefaceCache
+                    letterSpacing = 0f
                 }
             }
             "Button" -> Button(ctx).apply {
                 isAllCaps = false
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, DEFAULT_TEXT_SP)
-                typeface = android.graphics.Typeface.SANS_SERIF
+                typeface = bodyTypefaceCache
+                letterSpacing = 0f
             }
             // M-EVP-14 round-7 fix: Material `CheckBox` mapping for the
             // task-row leading toggle. The Nim leaves now emit a
@@ -801,7 +858,8 @@ class MainActivity : AppCompatActivity() {
                 minimumWidth = 0
                 minimumHeight = 0
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, DEFAULT_TEXT_SP)
-                typeface = android.graphics.Typeface.SANS_SERIF
+                typeface = bodyTypefaceCache
+                letterSpacing = 0f
                 // Round-10 wave-Q fix: tint the M3 checkbox track to
                 // the accent indigo so the unchecked outline + the
                 // checked fill both read as the demo's accent — the
@@ -829,7 +887,8 @@ class MainActivity : AppCompatActivity() {
                 // that was nearly invisible on the new background.
                 setTextColor(0xFFE6E6F0.toInt())
                 setHintTextColor(0xFFA0A0B8.toInt())
-                typeface = android.graphics.Typeface.SANS_SERIF
+                typeface = bodyTypefaceCache
+                letterSpacing = 0f
                 // Round-10 wave-Q fix: the EditText inherited the
                 // MaterialComponents primary-tint underline + filled
                 // backing, which painted as an indigo wash across
