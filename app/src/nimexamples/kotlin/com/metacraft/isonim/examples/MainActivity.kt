@@ -337,6 +337,26 @@ class MainActivity : AppCompatActivity() {
                     // the only affordance.
                     if (v is CheckBox) v.text = ""
                     else if (v is TextView) v.text = value
+                    // M-EVP-14 Wave Y (Y-2 fix): defensively re-apply
+                    // the Roboto typeface after every setText. Round-17
+                    // settings reviewer reported labels rendering with a
+                    // blocky pixel font in settings_app while the SAME
+                    // APK build renders task_app labels as clean Roboto.
+                    // The only path-difference we can see is that the
+                    // settings_app emits a larger number of <label>
+                    // / <span> / <h2> text leaves, all of which route
+                    // to TextView and DO get ``typeface = bodyTypefaceCache``
+                    // assigned at ``createView`` time. We've been unable
+                    // to identify a single concrete clobber site that
+                    // would reset only the settings TextViews, so we
+                    // make the application idempotent here: after every
+                    // setText we re-apply the cached Roboto. This is
+                    // O(1) per call and guarantees the typeface is the
+                    // last write to the TextView before draw.
+                    if (v is TextView) {
+                        v.typeface = bodyTypefaceCache
+                        v.letterSpacing = 0f
+                    }
                 }
                 "appendChild" -> {
                     val pH = cmdParent(i)
@@ -1013,7 +1033,13 @@ class MainActivity : AppCompatActivity() {
             "textColor" -> {
                 try {
                     val color = Color.parseColor(value)
-                    if (view is TextView) view.setTextColor(color)
+                    if (view is TextView) {
+                        view.setTextColor(color)
+                        // M-EVP-14 Wave Y (Y-2): re-pin Roboto typeface
+                        // after every style update on TextViews.
+                        view.typeface = bodyTypefaceCache
+                        view.letterSpacing = 0f
+                    }
                 } catch (_: Exception) {}
             }
             "cornerRadius" -> {
@@ -1052,7 +1078,15 @@ class MainActivity : AppCompatActivity() {
                 // system *is* sp / dp by convention, so this is the
                 // direct port.
                 val sp = value.toFloatOrNull() ?: return
-                if (view is TextView) view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+                if (view is TextView) {
+                    view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+                    // M-EVP-14 Wave Y (Y-2): re-pin Roboto after every
+                    // textSize set so any path that triggered a theme
+                    // typeface reset (e.g. setTextAppearance somewhere
+                    // upstream) gets overwritten by our cached Roboto.
+                    view.typeface = bodyTypefaceCache
+                    view.letterSpacing = 0f
+                }
             }
             "orientation" -> {
                 val orient = if (value == "HORIZONTAL")
