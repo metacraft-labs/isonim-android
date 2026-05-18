@@ -110,6 +110,30 @@ class MainActivity : AppCompatActivity() {
         demoMode = intent?.getStringExtra("demo")?.takeIf { it.isNotEmpty() }
             ?: "tasks"
 
+        // M-EVP-14 Wave Z': diagnostic logging for the Roboto typeface
+        // load path. The Wave X/Y reviewers kept reporting bitmap/blocky
+        // text on Android despite the bundled Roboto-Regular.ttf, so we
+        // dump (a) the assets/fonts/ directory listing, (b) the resolved
+        // `bodyTypefaceCache` reference, and (c) the system default
+        // typeface for comparison. Filterable via `adb logcat | grep ISONIM_FONT`.
+        try {
+            val fontAssets = assets.list("fonts")?.joinToString(",") ?: "<null>"
+            android.util.Log.d(
+                "ISONIM_FONT",
+                "assets/fonts={$fontAssets}")
+        } catch (t: Throwable) {
+            android.util.Log.w("ISONIM_FONT", "assets.list(fonts) threw", t)
+        }
+        try {
+            val tf = bodyTypefaceCache
+            android.util.Log.d(
+                "ISONIM_FONT",
+                "bodyTypefaceCache=$tf isDefault=${tf == android.graphics.Typeface.DEFAULT}" +
+                    " style=${tf.style}")
+        } catch (t: Throwable) {
+            android.util.Log.w("ISONIM_FONT", "bodyTypefaceCache resolve threw", t)
+        }
+
         // For the EX-M6 instrumented test the device may be sitting on
         // the keyguard PIN screen. `setShowWhenLocked(true)` + the
         // FLAG_DISMISS_KEYGUARD/SHOW_WHEN_LOCKED window flags ensure
