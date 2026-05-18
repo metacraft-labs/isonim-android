@@ -713,14 +713,34 @@ class MainActivity : AppCompatActivity() {
      * to sans-serif-medium with letterSpacing reset.
      */
     private val bodyTypefaceCache: android.graphics.Typeface by lazy {
-        // Wave S-4: probe a small set of Roboto font files in
-        // ``/system/fonts`` — Samsung devices (One UI) ship Roboto here
-        // even though the ``sans-serif`` alias resolves to the
-        // SamsungOne house family. By going direct via
-        // ``Typeface.createFromFile`` we sidestep the alias entirely and
-        // get canonical Material-style body text. Probe order: Medium,
-        // Regular, then RobotoFlex as a last fallback. Each path that
-        // exists wins; if none exist, fall through to sans-serif-medium.
+        // Wave S-4 / Wave T (T-7): body-text typeface resolver.
+        //
+        // Probe order:
+        //   1. App assets (``assets/fonts/Roboto-Regular.ttf``) — most
+        //      robust path: a bundled TTF in the APK guarantees the
+        //      exact Material Roboto on every device regardless of the
+        //      OEM's ``sans-serif`` alias. Wave T adds this layer so a
+        //      future commit dropping ``Roboto-Regular.ttf`` into
+        //      ``app/src/nimexamples/assets/fonts/`` immediately lands.
+        //   2. ``/system/fonts/Roboto*.ttf`` — direct file path.
+        //      Samsung devices (One UI) ship Roboto here even though
+        //      the ``sans-serif`` alias resolves to the SamsungOne
+        //      house family. Going via ``createFromFile`` sidesteps
+        //      the alias and lands canonical Material body text.
+        //   3. ``Typeface.create("Roboto")`` — system-level family
+        //      lookup. On Samsung/One UI this often aliases right back
+        //      to the house family, but on stock Android it lands
+        //      canonical Roboto.
+        //   4. ``Typeface.create("sans-serif-medium")`` — final
+        //      fallback. Heavier than ``sans-serif`` so the row text
+        //      reads as a deliberate weight tier instead of a faint
+        //      light-grey.
+        try {
+            val am = assets
+            am.open("fonts/Roboto-Regular.ttf").use { /* exists */ }
+            return@lazy android.graphics.Typeface.createFromAsset(
+                am, "fonts/Roboto-Regular.ttf")
+        } catch (_: Exception) { /* fall through */ }
         for (name in listOf(
             "Roboto-Medium.ttf",
             "Roboto-Regular.ttf",
