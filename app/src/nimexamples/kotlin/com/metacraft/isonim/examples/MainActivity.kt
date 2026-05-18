@@ -730,6 +730,15 @@ class MainActivity : AppCompatActivity() {
                 // pre-Wave-P SP path used. SP also honors users'
                 // accessibility font-scale.
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, DEFAULT_TEXT_SP)
+                // Round-10 wave-Q fix: the round-9 reviewer flagged
+                // the task labels as rendering in a "script /
+                // handwritten" style.  Force the system sans-serif
+                // typeface explicitly so any parent theme's body-text
+                // typeface override (the MaterialComponents theme
+                // exposes a `fontFamily` attribute that can resolve
+                // to a non-Roboto family on some devices) cannot leak
+                // into the Nim-driven view tree.
+                typeface = android.graphics.Typeface.SANS_SERIF
             }
             "MaterialButton" -> try {
                 MaterialButton(ctx).apply {
@@ -761,13 +770,20 @@ class MainActivity : AppCompatActivity() {
                     backgroundTintList =
                         android.content.res.ColorStateList.valueOf(
                             Color.TRANSPARENT)
+                    // Round-10 wave-Q fix: force system sans-serif —
+                    // see the TextView branch for the same rationale.
+                    typeface = android.graphics.Typeface.SANS_SERIF
                 }
             } catch (_: Exception) {
-                Button(ctx).apply { isAllCaps = false }
+                Button(ctx).apply {
+                    isAllCaps = false
+                    typeface = android.graphics.Typeface.SANS_SERIF
+                }
             }
             "Button" -> Button(ctx).apply {
                 isAllCaps = false
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, DEFAULT_TEXT_SP)
+                typeface = android.graphics.Typeface.SANS_SERIF
             }
             // M-EVP-14 round-7 fix: Material `CheckBox` mapping for the
             // task-row leading toggle. The Nim leaves now emit a
@@ -785,6 +801,15 @@ class MainActivity : AppCompatActivity() {
                 minimumWidth = 0
                 minimumHeight = 0
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, DEFAULT_TEXT_SP)
+                typeface = android.graphics.Typeface.SANS_SERIF
+                // Round-10 wave-Q fix: tint the M3 checkbox track to
+                // the accent indigo so the unchecked outline + the
+                // checked fill both read as the demo's accent — the
+                // round-9 reviewer noted the rows were missing a
+                // visible toggle affordance.  `buttonTintList` covers
+                // both states on AppCompatCheckBox.
+                buttonTintList = android.content.res.ColorStateList.valueOf(
+                    0xFF7C7AED.toInt())
             }
             "EditText" -> EditText(ctx).apply {
                 setSingleLine()
@@ -804,6 +829,18 @@ class MainActivity : AppCompatActivity() {
                 // that was nearly invisible on the new background.
                 setTextColor(0xFFE6E6F0.toInt())
                 setHintTextColor(0xFFA0A0B8.toInt())
+                typeface = android.graphics.Typeface.SANS_SERIF
+                // Round-10 wave-Q fix: the EditText inherited the
+                // MaterialComponents primary-tint underline + filled
+                // backing, which painted as an indigo wash across
+                // the entire input row even when the leaves set the
+                // `background-color` to the neutral row surface
+                // (the M3 underline lives on top of the background
+                // drawable).  Drop the tint to a neutral grey so the
+                // accent indigo lives only on the active filter chip
+                // + the Add Task CTA + the toggled checkboxes.
+                backgroundTintList = android.content.res.ColorStateList.valueOf(
+                    0xFF3A3A52.toInt())
             }
             // EX-M22: <select> maps to Spinner via the Android
             // renderer's tag table. For the EX-M22 settings_app demo
@@ -994,6 +1031,20 @@ class MainActivity : AppCompatActivity() {
                 val weight = value.toFloatOrNull() ?: return
                 flexGrowWeights[handle] = weight
                 applyFlexGrow(view, weight)
+            }
+            "visibility" -> {
+                // Round-10 wave-Q fix: the settings_app shell now keeps
+                // a hidden `<aside class="settings-bottom-sheet">` at
+                // the root for cross-renderer parity-test compatibility
+                // while the visible chrome paints the inline card stack.
+                // The leaf sets `display: GONE` which the Nim renderer
+                // maps to `visibility: GONE`; honour it here so the
+                // aside doesn't take any layout space on the device.
+                view.visibility = when (value) {
+                    "GONE" -> View.GONE
+                    "INVISIBLE" -> View.INVISIBLE
+                    else -> View.VISIBLE
+                }
             }
             "elevation" -> {
                 // Round-4 fix: settings_app group surface cards request
