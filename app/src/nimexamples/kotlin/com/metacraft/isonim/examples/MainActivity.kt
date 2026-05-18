@@ -722,10 +722,22 @@ class MainActivity : AppCompatActivity() {
                 // `settings_app/android/shell.nim`) still renders
                 // legibly on the new background.
                 setTextColor(0xFFE6E6F0.toInt())
+                // EX-M22 post-no-stretch fix: default M3 bodyMedium
+                // (14 px in our raw-pixel font-size convention) for
+                // any TextView the leaves don't explicitly size. See
+                // the `textSize` setStyle dispatch for the rationale
+                // for raw px over sp.
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, DEFAULT_TEXT_PX)
             }
             "MaterialButton" -> try {
                 MaterialButton(ctx).apply {
                     isAllCaps = false
+                    // EX-M22 post-no-stretch fix: default button label
+                    // size in raw framebuffer pixels (see the textSize
+                    // setStyle dispatch). MaterialButton's default sp
+                    // text would render hugely in the editor's 1080×720
+                    // crop of the device's 1:1 framebuffer.
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, DEFAULT_TEXT_PX)
                     // Round-3 fix: drop the legacy 40 dp minHeight /
                     // 48 dp minWidth so per-leaf `setStyle("height",
                     // "32")` / `setStyle("width", "40")` calls (the
@@ -754,7 +766,10 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {
                 Button(ctx).apply { isAllCaps = false }
             }
-            "Button" -> Button(ctx).apply { isAllCaps = false }
+            "Button" -> Button(ctx).apply {
+                isAllCaps = false
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, DEFAULT_TEXT_PX)
+            }
             // M-EVP-14 round-7 fix: Material `CheckBox` mapping for the
             // task-row leading toggle. The Nim leaves now emit a
             // `<checkbox>` element (mapped via the renderer's tagMap)
@@ -770,9 +785,11 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, 0, 0, 0)
                 minimumWidth = 0
                 minimumHeight = 0
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, DEFAULT_TEXT_PX)
             }
             "EditText" -> EditText(ctx).apply {
                 setSingleLine()
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, DEFAULT_TEXT_PX)
                 // EX-M6 task_app input ships an explicit
                 // placeholder="New task..." attribute via the leaves;
                 // the renderer-method translates that to
@@ -897,8 +914,31 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             "textSize" -> {
-                val sp = value.toFloatOrNull() ?: return
-                if (view is TextView) view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+                // EX-M22 post-no-stretch fix: the editor's canvas now
+                // renders the device framebuffer at intrinsic 1:1 pixel
+                // size (no CSS down-scaling — see `isonim@cbed12e`).
+                // Previously, treating the leaf-emitted font-size as
+                // `sp` and letting density scaling kick in was fine
+                // because the entire ~1080×2340 frame was bilinear
+                // scaled by CSS to a ~1080×720 preview pane (~0.31×),
+                // which absorbed the density multiplier visually. With
+                // the no-stretch pipeline, the 1080×720 pane shows the
+                // device's centered 1:1 crop, so an sp value of 14 on
+                // a Pixel 6 (density ~2.75) renders at ~38 framebuffer
+                // pixels and reads as ~48–60 sp at the reviewer's
+                // viewing scale.
+                //
+                // The fix: interpret the leaf-emitted `font-size`
+                // value as raw framebuffer pixels, matching the
+                // convention every other backend already uses
+                // (Cocoa / Freya / GPUI / Web all treat the leaf's
+                // `font-size` number as a pixel value applied 1:1 to
+                // their canvas). Now a leaf `font-size: 14` paints 14
+                // framebuffer pixels on Android too, so the cropped
+                // 1080×720 view reads at the same proportions as the
+                // other backends.
+                val px = value.toFloatOrNull() ?: return
+                if (view is TextView) view.setTextSize(TypedValue.COMPLEX_UNIT_PX, px)
             }
             "orientation" -> {
                 val orient = if (value == "HORIZONTAL")
@@ -1009,5 +1049,13 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private val SUPPRESS_WATCHER = Any()
         private val WATCHER_INSTALLED = Any()
+        // EX-M22 post-no-stretch fix: default text size for any
+        // text-bearing view the leaves don't size explicitly. Raw
+        // framebuffer pixels (not sp) — see the `textSize` setStyle
+        // dispatch in `applyStyle` for the unit-chain rationale.
+        // Roughly M3 bodyMedium proportions when the device's
+        // ~1080×2340 framebuffer is viewed through the editor's
+        // 1080×720 centered-crop preview.
+        private const val DEFAULT_TEXT_PX = 18f
     }
 }
