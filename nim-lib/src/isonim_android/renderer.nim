@@ -29,7 +29,13 @@ const tagMap = {
   "virtual-list": "RecyclerView",
   "textarea": "EditText",
   "search": "SearchView",
-  "switch": "Switch", "toggle": "Switch",
+  # M-EVP-14 Wave W-3: route ``<switch>`` / ``<toggle>`` through a
+  # custom-drawn Kotlin View (``CustomSwitchView``) so the IsoNim
+  # brand indigo on-state survives Samsung One UI's MaterialSwitch
+  # theme override. NimBridge.createView matches "custom-switch" to
+  # the custom view; "Switch" still maps to the platform Switch for
+  # any callers that explicitly want the system widget.
+  "switch": "custom-switch", "toggle": "custom-switch",
   "slider": "SeekBar", "range": "SeekBar",
   "select": "Spinner",
   "segmented": "ToggleGroup",

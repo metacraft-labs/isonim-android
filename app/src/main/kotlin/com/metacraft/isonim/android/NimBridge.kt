@@ -101,7 +101,16 @@ object NimBridge {
             "VideoView" -> VideoView(context)
             "MapView" -> LinearLayout(context) // MapView requires Google Play Services SDK
             // Native controls (lowercase tags from native_controls.nim)
-            "switch" -> Switch(context)
+            // M-EVP-14 Wave W-3: route the lowercase ``switch`` tag the
+            // settings_app / native_controls leaves emit through the
+            // custom-drawn ``CustomSwitchView`` instead of the system
+            // ``Switch``. Samsung's One UI overrides MaterialSwitch's
+            // tint attributes with the device theme, so the brand-
+            // indigo on-state never paints on real devices. The custom
+            // view paints its own track + thumb via Canvas.onDraw so
+            // the indigo accent survives device theming.
+            "switch" -> CustomSwitchView(context)
+            "custom-switch" -> CustomSwitchView(context)
             "button" -> try {
                 MaterialButton(context)
             } catch (_: Exception) {
@@ -187,7 +196,13 @@ object NimBridge {
                     }
                 }
                 "queryHint" -> if (view is SearchView) view.queryHint = value
-                "checked" -> if (view is Switch) view.isChecked = value == "true"
+                "checked" -> {
+                    val isOn = value == "true" || value == "checked"
+                    when (view) {
+                        is CustomSwitchView -> view.isChecked = isOn
+                        is Switch -> view.isChecked = isOn
+                    }
+                }
                 "min" -> if (view is SeekBar) view.min = value.toIntOrNull() ?: 0
                 "max" -> {
                     if (view is SeekBar) view.max = value.toIntOrNull() ?: 100
