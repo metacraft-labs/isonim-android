@@ -84,6 +84,18 @@ android {
             jniLibs.srcDirs("src/main/jniLibs")
         }
     }
+    // M-EVP-14 Wave-X (X-4 fix): prevent AAPT from compressing bundled
+    // TTF font assets. Without this, the build wraps
+    // ``assets/fonts/Roboto-Regular.ttf`` in a ``.ttf.jar`` archive and
+    // ``AssetManager.open("fonts/Roboto-Regular.ttf")`` throws
+    // ``FileNotFoundException`` at runtime — silently falling through
+    // the typeface chain to ``sans-serif-medium`` which on Samsung
+    // One UI maps to the device's heavy SamsungOne house font (the
+    // chunky/blocky rendering Wave-X-4 flagged). Listing ``ttf`` in
+    // ``noCompress`` keeps the TTF resolvable as a plain asset.
+    androidResources {
+        noCompress.addAll(listOf("ttf"))
+    }
 }
 
 dependencies {
