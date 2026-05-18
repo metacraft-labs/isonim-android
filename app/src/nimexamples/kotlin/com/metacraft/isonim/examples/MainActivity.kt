@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -326,7 +327,16 @@ class MainActivity : AppCompatActivity() {
                     val nimHandle = cmdHandle(i)
                     val value = cmdValue(i)
                     val v = views[nimHandle] ?: continue
-                    if (v is TextView) v.text = value
+                    // M-EVP-14 round-7 fix: a `CheckBox` extends
+                    // `TextView`, so a naive `v.text = value` would
+                    // render the leaves' check-glyph fallback ("✓") as
+                    // the label text NEXT to the checkbox square. The
+                    // CheckBox's visual state is driven by `isChecked`
+                    // (set via the `checked` setAttribute path); we
+                    // explicitly clear the label so the box itself is
+                    // the only affordance.
+                    if (v is CheckBox) v.text = ""
+                    else if (v is TextView) v.text = value
                 }
                 "appendChild" -> {
                     val pH = cmdParent(i)
@@ -392,6 +402,15 @@ class MainActivity : AppCompatActivity() {
                             v.setText(value)
                             v.tag = null
                         } else if (v is TextView) v.text = value
+                        // M-EVP-14 round-7: the task-row leading
+                        // `<checkbox>` mirrors `task.completed` via a
+                        // `checked` attribute. Apply it to the real
+                        // CheckBox so the captured frame shows the
+                        // Material toggle visibly checked/unchecked.
+                        "checked" -> if (v is CheckBox) {
+                            v.isChecked =
+                                value == "true" || value == "1"
+                        }
                         "class" -> {
                             // The leaves use `class="completed"` to
                             // flag toggled rows and `class="selected"`
@@ -736,6 +755,22 @@ class MainActivity : AppCompatActivity() {
                 Button(ctx).apply { isAllCaps = false }
             }
             "Button" -> Button(ctx).apply { isAllCaps = false }
+            // M-EVP-14 round-7 fix: Material `CheckBox` mapping for the
+            // task-row leading toggle. The Nim leaves now emit a
+            // `<checkbox>` element (mapped via the renderer's tagMap)
+            // for each task row's leading edge so the row shows a
+            // proper Material checkbox to the left of the task name
+            // instead of an empty toggle slot. The CheckBox's checked
+            // state is mirrored from the VM via `attr["checked"]`
+            // applied in the setAttribute dispatch below.
+            "CheckBox" -> CheckBox(ctx).apply {
+                setTextColor(0xFFE6E6F0.toInt())
+                // No padding so the 20-dp leading slot inside the row
+                // doesn't get pushed off by Material's default insets.
+                setPadding(0, 0, 0, 0)
+                minimumWidth = 0
+                minimumHeight = 0
+            }
             "EditText" -> EditText(ctx).apply {
                 setSingleLine()
                 // EX-M6 task_app input ships an explicit
