@@ -4,10 +4,23 @@
       Theme for the `nimexamples` flavor. Material Components with no
       action bar so the Nim composition root owns the top-of-screen
       surface (the legacy nimnative flavor uses the same parent).
+
+      M-EVP-14 Wave AA (AA-4 fix): override android:statusBarColor to a
+      neutral dark canvas so the M3 colorPrimary tint does not flood
+      the system status-bar chrome. Round-19 reviewer flagged "Status
+      bar is rendered solid indigo (#7c7aed-family), bleeding the
+      accent across system chrome that should be neutral. Accent must
+      be used 'sparingly'." Setting statusBarColor to #0F1117 (the
+      same dark canvas the task_app screen background uses) means the
+      status bar reads as a continuation of the app surface, not as
+      an accented band.
     -->
     <style name="Theme.IsoNimExamples" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">#6366F1</item>
         <item name="colorPrimaryVariant">#4F46E5</item>
         <item name="colorSecondary">#22D3EE</item>
+        <item name="android:statusBarColor">#0F1117</item>
+        <item name="android:navigationBarColor">#0F1117</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
