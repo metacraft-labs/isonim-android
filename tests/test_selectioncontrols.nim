@@ -8,15 +8,19 @@ suite "M8 - Selection Control Tag Mapping":
   setup:
     resetRenderer()
 
-  test "switch maps to Switch":
+  test "switch maps to custom-switch":
+    # M-EVP-14 Wave W-3: <switch> routes through the custom-drawn
+    # CustomSwitchView (tag "custom-switch") so the IsoNim brand indigo
+    # on-state survives Samsung One UI's MaterialSwitch theme override.
     var r: AndroidRenderer
     let e = r.createElement("switch")
-    check viewTree[e].tag == "Switch"
+    check viewTree[e].tag == "custom-switch"
 
-  test "toggle maps to Switch":
+  test "toggle maps to custom-switch":
+    # M-EVP-14 Wave W-3: <toggle> shares the custom-drawn switch view.
     var r: AndroidRenderer
     let e = r.createElement("toggle")
-    check viewTree[e].tag == "Switch"
+    check viewTree[e].tag == "custom-switch"
 
   test "slider maps to SeekBar":
     var r: AndroidRenderer
