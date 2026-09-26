@@ -1,4 +1,7 @@
 nimcache/
+# Per-checkout nimcache (config.nims): every Nim compile in this checkout
+# keeps its intermediate files here, never in the shared ~/.cache/nim.
+.nimcache/
 # Compiled Nim test binaries (no extension)
 tests/test_stub
 tests/test_jni_bridge
@@ -15,6 +18,7 @@ tests/test_media
 tests/test_navigation
 tests/test_progress
 tests/test_theme_android
+tests/test_nimcache_is_worktree_local
 nim-lib/src/isonim_android/renderer
 *.apk
 *.aab

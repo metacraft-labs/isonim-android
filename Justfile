@@ -58,6 +58,7 @@ build-native-controls:
 
 # Run Nim tests (Tier 1 — macOS, no Android)
 test:
+    nim c -r --hints:off tests/test_nimcache_is_worktree_local.nim
     nim c -r --nimcache:nimcache/test --path:nim-lib/src tests/test_stub.nim
 
 # ─────────────────────────────────────────────────────────────────────────────
