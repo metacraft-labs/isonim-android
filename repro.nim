@@ -118,9 +118,23 @@ import ct_test_nim_unittest
 type
   AndroidTestSpec = object
     ## One entry per test file. ``source`` is the repo-relative ``.nim``
-    ## path; ``binary`` is the ``build/test-bin/<stem>`` output.
+    ## path; ``binary`` is the ``build/test-bin/<stem>`` output, written
+    ## without the host's executable suffix (``emitTestPair`` appends
+    ## ``testBinaryExt``).
     source: string
     binary: string
+
+# The test binary's file extension on the host the graph is built for.
+# ``nim c --out:build/test-bin/<stem>`` writes ``<stem>.exe`` on Windows, and
+# ``buildNimUnittest.build`` declares that ``.exe`` as the compile edge's
+# output, but it hands the ``binary`` it was given UNCHANGED to the typed
+# ``testBinary`` that ``edge.testBinary.run`` executes; its contract is that
+# the caller names the runnable file. Passing ``<stem>`` therefore made every
+# Windows execute edge launch a file that does not exist. With the suffix in
+# the path given to ``buildNimUnittest.build``, the compile output, the typed
+# binary and the executed path are the same file, and ``buildNimUnittest``
+# does not append a second ``.exe``.
+const testBinaryExt = when defined(windows): ".exe" else: ""
 
 # The corpus — one entry per ``tests/test_*.nim`` host suite. Every entry
 # compiles + runs to exit 0 on this Linux host (see the module docstring's
@@ -208,9 +222,11 @@ package isonim_android:
       let stem =
         if lastSlash >= 0: binary[lastSlash + 1 .. ^1]
         else: binary
+      # ``stem`` is taken from the suffix-less ``binary`` so the action ids
+      # are the same on every host; only the file path gains ``.exe``.
       let edge = buildNimUnittest.build(
         source = source,
-        binary = binary,
+        binary = binary & testBinaryExt,
         defines = @["mockJni"],
         paths = @["nim-lib/src"],
         extraInputs = @["nim-lib/src"],
