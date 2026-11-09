@@ -17,7 +17,8 @@
 ## (single-sibling consumer) and the sibling isonim-renderer recipe
 ## ``isonim/repro.nim`` this repo consumes:
 ##
-## * Declares the toolchain floor via ``uses:`` (``nim`` + ``gcc``) plus the
+## * Declares the toolchain floor via ``uses:`` (``nim`` + the native C
+##   compiler: ``clang`` on Darwin, ``gcc`` elsewhere) plus the
 ##   ONE sibling ``uses: "isonim"`` edge. Mirrors the nimble file's
 ##   ``requires "nim >= 2.0.0"`` + ``requires "isonim >= 0.1.0"``.
 ## * ``uses: "isonim"`` is the SC-11 develop-mode consumption of the
@@ -179,11 +180,14 @@ package isonim_android:
   uses:
     # Toolchain floor — the PATH-resolvable binaries the build needs. ``nim``
     # compiles every test binary (the ``buildNimUnittest.build`` edges below,
-    # matching the nimble file's ``requires "nim >= 2.0.0"``); ``gcc`` is the
-    # C back-end ``nim c`` shells out to. Sufficient for the path-mode
-    # resolver under ``nix develop``.
+    # matching the nimble file's ``requires "nim >= 2.0.0"``). Native Nim
+    # selects Clang on Darwin and GCC elsewhere; declare that actual backend
+    # so its identity and executable directory reach each compile action.
     "nim >=2.0"
-    "gcc >=12"
+    when defined(macosx):
+      "clang"
+    else:
+      "gcc >=12"
 
     # SC-11 develop-mode sibling edge — the IsoNim core. ``uses: "isonim"``
     # names the ``isonim`` project (its ``repro.nim`` exports ``library
