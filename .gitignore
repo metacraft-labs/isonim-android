@@ -28,3 +28,5 @@ app/build/
 local.properties
 *.so
 .idea/
+# reprobuild's per-checkout state (`repro build`, `repro test`, `repro exec`).
+.repro/
