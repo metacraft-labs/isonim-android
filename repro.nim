@@ -104,6 +104,7 @@
 ## for uses declarations".
 
 import repro_project_dsl
+import repro_dsl_stdlib/foreign_env
 
 # ``ct_test_nim_unittest`` supplies the ``buildNimUnittest.build(...)``
 # typed-tool used by every test BUILD edge and the ``edge.testBinary.run(...)``
@@ -175,6 +176,15 @@ const androidTestSpecs: seq[AndroidTestSpec] = @[
 ]
 
 package isonim_android:
+  # ``repro exec`` (and so CI's ``dev-exec just build`` / ``just test`` in
+  # ci-reprobuild.yml) runs inside the flake's dev shell, which is where
+  # ``just`` comes from. Without it the environment had ``nim`` and the C
+  # compiler from ``uses:`` but no ``just``. Same activation as
+  # ``isonim-gpui/repro.nim`` and ``isonim-freya/repro.nim``.
+  devEnv:
+    when not defined(windows):
+      useFlakeDevShell()
+
   defaultToolProvisioning "path"
 
   uses:
