@@ -56,6 +56,42 @@ build-native-controls:
     echo "Built (native controls): app/src/main/jniLibs/arm64-v8a/libisonim.so"
     file app/src/main/jniLibs/arm64-v8a/libisonim.so
 
+# Build what `repro build` builds: the fifteen host test binaries that
+# `repro.nim` declares (`androidTestSpecs`), into `build/test-bin/<stem>`,
+# with the flags its `buildNimUnittest` edges pass (`--threads:on
+# --hints:off --warnings:off -d:mockJni --path:nim-lib/src`). The renderer is
+# consumed as source, and the Android `.so` has its own `build-native*`
+# recipes that need the NDK, so these binaries are the only artefacts the
+# host build graph produces. `.github/workflows/ci-reprobuild.yml` runs
+# `just build` to cross-check `repro build`; without this recipe that step
+# failed with "Justfile does not contain recipe `build`". Keep the list in
+# step with `androidTestSpecs` in `repro.nim`.
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p build/test-bin
+    for stem in \
+        test_stub \
+        test_jni_bridge \
+        test_renderer \
+        test_scheduler \
+        test_material \
+        test_scrollview \
+        test_textcontrols \
+        test_selectioncontrols \
+        test_dialogs \
+        test_navigation \
+        test_progress \
+        test_media \
+        test_accessibility \
+        test_theme_android \
+        test_cross_renderer; do
+      nim c --threads:on --hints:off --warnings:off -d:mockJni \
+        --path:nim-lib/src \
+        --nimcache:"nimcache/build/$stem" \
+        --out:"build/test-bin/$stem" "tests/$stem.nim"
+    done
+
 # Run Nim tests (Tier 1 — macOS, no Android)
 test:
     nim c -r --hints:off tests/test_nimcache_is_worktree_local.nim
