@@ -26,6 +26,19 @@
 # exactly the unpinned resolve the mechanism exists to prevent. Delete these
 # `=<sha>` suffixes as soon as (1) lands.
 #
-# Cross-repo siblings cloned by setup-dev-env at the explicit SHAs
-# pinned below (see codetracer-specs/Testing/Cross-Repo-CI-Integration.md).
-isonim=f39688e6d988d3622ad8575dd87792eeb022bf75  # isonim@dev tip
+# Cross-repo siblings cloned by setup-dev-env to ../<name> at the explicit
+# SHAs pinned below.
+#
+# Both are needed: `nim.cfg` puts `../isonim/src` and `../nim-everywhere/src`
+# on the module path, and isonim's `isonim/core/platform` imports
+# `nim_everywhere/platform`, so `tests/test_cross_renderer.nim` cannot compile
+# without nim-everywhere.
+#
+# Keep the isonim SHA equal to the isonim revision in `repro.lock`. `repro
+# build` refuses a sibling checkout whose HEAD differs from the consumer
+# lock's pin ("cross-repo producer "isonim" source revision mismatch"), so a
+# pin here that disagrees with the lock fails ci-reprobuild before anything is
+# compiled. Move both together: edit the SHA here and run
+# `repro lock update isonim --to=<sha>`.
+isonim=37123d29caca7f6880fd8380a9cf3f44e883587c  # isonim@dev tip (2026-10-31)
+nim-everywhere=23cf930e5b2463d964579b318e01e4ef1cab63b3  # nim-everywhere@dev tip (2026-11-06)
