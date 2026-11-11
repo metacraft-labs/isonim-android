@@ -17,7 +17,8 @@
 ## (single-sibling consumer) and the sibling isonim-renderer recipe
 ## ``isonim/repro.nim`` this repo consumes:
 ##
-## * Declares the toolchain floor via ``uses:`` (``nim`` + ``gcc``) plus the
+## * Declares the toolchain floor via ``uses:`` (``nim`` + the native C
+##   compiler: ``clang`` on Darwin, ``gcc`` elsewhere) plus the
 ##   ONE sibling ``uses: "isonim"`` edge. Mirrors the nimble file's
 ##   ``requires "nim >= 2.0.0"`` + ``requires "isonim >= 0.1.0"``.
 ## * ``uses: "isonim"`` is the SC-11 develop-mode consumption of the
@@ -103,6 +104,7 @@
 ## for uses declarations".
 
 import repro_project_dsl
+import repro_dsl_stdlib/foreign_env
 
 # ``ct_test_nim_unittest`` supplies the ``buildNimUnittest.build(...)``
 # typed-tool used by every test BUILD edge and the ``edge.testBinary.run(...)``
@@ -118,9 +120,23 @@ import ct_test_nim_unittest
 type
   AndroidTestSpec = object
     ## One entry per test file. ``source`` is the repo-relative ``.nim``
-    ## path; ``binary`` is the ``build/test-bin/<stem>`` output.
+    ## path; ``binary`` is the ``build/test-bin/<stem>`` output, written
+    ## without the host's executable suffix (``emitTestPair`` appends
+    ## ``testBinaryExt``).
     source: string
     binary: string
+
+# The test binary's file extension on the host the graph is built for.
+# ``nim c --out:build/test-bin/<stem>`` writes ``<stem>.exe`` on Windows, and
+# ``buildNimUnittest.build`` declares that ``.exe`` as the compile edge's
+# output, but it hands the ``binary`` it was given UNCHANGED to the typed
+# ``testBinary`` that ``edge.testBinary.run`` executes; its contract is that
+# the caller names the runnable file. Passing ``<stem>`` therefore made every
+# Windows execute edge launch a file that does not exist. With the suffix in
+# the path given to ``buildNimUnittest.build``, the compile output, the typed
+# binary and the executed path are the same file, and ``buildNimUnittest``
+# does not append a second ``.exe``.
+const testBinaryExt = when defined(windows): ".exe" else: ""
 
 # The corpus — one entry per ``tests/test_*.nim`` host suite. Every entry
 # compiles + runs to exit 0 on this Linux host (see the module docstring's
@@ -160,16 +176,38 @@ const androidTestSpecs: seq[AndroidTestSpec] = @[
 ]
 
 package isonim_android:
+  # ``repro exec`` (and so CI's ``dev-exec just build`` / ``just test`` in
+  # ci-reprobuild.yml) runs inside the flake's dev shell, which is where
+  # ``just`` comes from. Without it the environment had ``nim`` and the C
+  # compiler from ``uses:`` but no ``just``. Same activation as
+  # ``isonim-gpui/repro.nim`` and ``isonim-freya/repro.nim``.
+  devEnv:
+    when not defined(windows):
+      useFlakeDevShell()
+
   defaultToolProvisioning "path"
 
   uses:
     # Toolchain floor — the PATH-resolvable binaries the build needs. ``nim``
     # compiles every test binary (the ``buildNimUnittest.build`` edges below,
-    # matching the nimble file's ``requires "nim >= 2.0.0"``); ``gcc`` is the
-    # C back-end ``nim c`` shells out to. Sufficient for the path-mode
-    # resolver under ``nix develop``.
+    # matching the nimble file's ``requires "nim >= 2.0.0"``). Native Nim
+    # selects Clang on Darwin and GCC elsewhere; declare that actual backend
+    # so its identity and executable directory reach each compile action.
     "nim >=2.0"
-    "gcc >=12"
+    when defined(macosx):
+      "clang"
+    else:
+      "gcc >=12"
+    # ``just`` runs CI's ``just build`` / ``just test`` cross-checks
+    # (ci-reprobuild.yml's ``dev-exec just ...`` steps, under ``repro exec``).
+    # On Linux and macOS the flake dev shell supplies it, but ``devEnv:``
+    # activates that shell only off Windows, so on Windows nothing did and
+    # those steps failed with "The term 'just' is not recognized". Declaring
+    # it for every OS keeps one toolchain list: path mode takes ``just``
+    # from the caller's PATH and realizes the package's release archive
+    # only when it is absent there; where the flake shell is active, its
+    # ``just`` still comes first on ``repro exec``'s PATH.
+    "just >=1"
 
     # SC-11 develop-mode sibling edge — the IsoNim core. ``uses: "isonim"``
     # names the ``isonim`` project (its ``repro.nim`` exports ``library
@@ -208,9 +246,11 @@ package isonim_android:
       let stem =
         if lastSlash >= 0: binary[lastSlash + 1 .. ^1]
         else: binary
+      # ``stem`` is taken from the suffix-less ``binary`` so the action ids
+      # are the same on every host; only the file path gains ``.exe``.
       let edge = buildNimUnittest.build(
         source = source,
-        binary = binary,
+        binary = binary & testBinaryExt,
         defines = @["mockJni"],
         paths = @["nim-lib/src"],
         extraInputs = @["nim-lib/src"],

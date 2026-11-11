@@ -12,22 +12,39 @@ jobs:
     # macOS-only leg: the renderer's JNI surface is validated on macOS today.
     runs-on: [self-hosted, macos, arm64]
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/checkout@v4
+      # The suites compile against two sibling repositories that are not part
+      # of this checkout: `nim.cfg` puts `../isonim/src` and
+      # `../nim-everywhere/src` on the module path. They used to come from
+      # `actions/checkout` steps with `path: ../isonim` and
+      # `path: ../nim-everywhere`, which `actions/checkout` refuses
+      # ("Repository path '.../isonim-android/isonim' is not under
+      # '.../isonim-android/isonim-android'"), so this job died on its second
+      # step on every run.
+      #
+      # `setup-dev-env` clones each entry of `.github/sibling-repos` to
+      # `../<name>` at the revision recorded there, and provisions Nix with the
+      # shared setup-nix action (Nix is already on the self-hosted runners;
+      # binary-cache traffic goes through the org Attic substituter), which
+      # replaces the DeterminateSystems installer and magic-nix-cache actions.
+      # Its token is minted from the CI Token Provider app, the same way
+      # `ci-reprobuild.yml` mints it.
+      - name: Mint installation token for cross-repo sibling clones
+        id: ci_token
+        uses: actions/create-github-app-token@v2
         with:
-          repository: metacraft-labs/isonim
-          path: ../isonim
-          token: ${{ secrets.GITHUB_TOKEN }}
+          app-id: ${{ secrets.CI_TOKEN_PROVIDER_APP_ID }}
+          private-key: ${{ secrets.CI_TOKEN_PROVIDER_PRIVATE_KEY }}
+          owner: metacraft-labs
 
       - uses: actions/checkout@v4
-        with:
-          repository: metacraft-labs/nim-everywhere
-          path: ../nim-everywhere
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Setup dev env (clones .github/sibling-repos)
+        uses: metacraft-labs/metacraft-github-actions/setup-dev-env@dev
+        with:
+          env-flavor: nix
+          gh-token: ${{ steps.ci_token.outputs.token }}
+          substituters: ${{ vars.ATTIC_SUBSTITUTER }}
+          trusted-public-keys: ${{ vars.ATTIC_TRUSTED_PUBLIC_KEY }}
 
       - name: nim check (renderer — Android JNI surface)
         run: nix develop -c bash -c "nim check -d:mockJni nim-lib/src/isonim_android/renderer.nim"
@@ -49,5 +66,4 @@ jobs:
       # Paparazzi snapshot tests are gated separately because they
       # require Gradle + a connected device or emulator. See
       # `Justfile` recipes `test-robolectric`, `test-device`,
-      # `test-snapshots` and the EX-M6 status block in
-      # `codetracer-specs/Front-Ends/IsoNim/isonim-render-stream.status.org`.
+      # `test-snapshots`.
