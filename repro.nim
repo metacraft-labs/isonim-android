@@ -141,7 +141,11 @@ const testBinaryExt = when defined(windows): ".exe" else: ""
 # The corpus — one entry per ``tests/test_*.nim`` host suite. Every entry
 # compiles + runs to exit 0 on this Linux host (see the module docstring's
 # platform-gating note), so there is a single unconditional list — no per-OS
-# partition.
+# partition. Two ``tests/test_*.nim`` files are deliberately not listed:
+# ``test_nimcache_is_worktree_local`` and ``test_just_test_runs_every_suite``
+# check the checkout's tooling (``config.nims``, the ``Justfile``) by running
+# ``nim dump`` / ``just`` themselves, not the renderer. ``just test``
+# (``tests/run_suites.nim``) runs them with the rest of the corpus.
 const androidTestSpecs: seq[AndroidTestSpec] = @[
   AndroidTestSpec(source: "tests/test_stub.nim",
     binary: "build/test-bin/test_stub"),

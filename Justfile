@@ -92,10 +92,15 @@ build:
         --out:"build/test-bin/$stem" "tests/$stem.nim"
     done
 
-# Run Nim tests (Tier 1 — macOS, no Android)
+# Run every Nim host test suite (Tier 1 — no Android SDK or device needed).
+# `tests/run_suites.nim` compiles and runs each `tests/test_*.nim` it finds,
+# with the flags of `repro.nim`'s test edges (`-d:mockJni`, MockJNI backend),
+# prints PASS/FAIL per file and a `suites: N run, P passed, F failed` total,
+# and exits non-zero if any suite failed. It globs instead of listing files
+# so no suite can be left unscheduled; this recipe used to name two of them.
+# `tests/test_just_test_runs_every_suite.nim` checks that it stays that way.
 test:
-    nim c -r --hints:off tests/test_nimcache_is_worktree_local.nim
-    nim c -r --nimcache:nimcache/test --path:nim-lib/src tests/test_stub.nim
+    nim r --hints:off tests/run_suites.nim
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Task-app demo (canonical home in isonim-examples since EX-M6)

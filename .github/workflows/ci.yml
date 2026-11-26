@@ -49,7 +49,11 @@ jobs:
       - name: nim check (renderer — Android JNI surface)
         run: nix develop -c bash -c "nim check -d:mockJni nim-lib/src/isonim_android/renderer.nim"
 
-      - name: Run JNI stub smoke tests
+      # `just test` compiles and runs every `tests/test_*.nim` host suite
+      # (`tests/run_suites.nim`), each with `-d:mockJni`, and ends with
+      # `isonim-android suites: N run, P passed, F failed`. It used to run
+      # only `test_stub` and the nimcache check, so this job counted one test.
+      - name: Run Nim host test suites
         run: nix develop -c bash -c "just test"
 
       # The task-app demo's host-side end-to-end tests live in
